@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { settingsApi, Preferences } from "@/lib/api";
 import { X, Plus } from "lucide-react";
+import { YC_COHORTS } from "@/lib/yc-cohorts";
 
 function TagInput({
   label,
@@ -120,6 +121,43 @@ export default function SettingsPage() {
           onChange={(v) => update({ target_companies: v })}
           placeholder="e.g. Stripe"
         />
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-zinc-400">Quick add — YC cohorts</label>
+          <div className="flex flex-wrap gap-2">
+            {YC_COHORTS.map((cohort) => {
+              const current = form.target_companies ?? [];
+              const allAdded = cohort.companies.every((c) => current.includes(c));
+              const toggle = () => {
+                if (allAdded) {
+                  update({ target_companies: current.filter((c) => !cohort.companies.includes(c)) });
+                } else {
+                  const merged = [...current, ...cohort.companies.filter((c) => !current.includes(c))];
+                  update({ target_companies: merged });
+                }
+              };
+              return (
+                <label key={cohort.id} className="flex items-center gap-2 cursor-pointer group">
+                  <div className="relative">
+                    <input type="checkbox" checked={allAdded} onChange={toggle} className="sr-only" />
+                    <div className={`h-4 w-4 rounded border transition-colors ${
+                      allAdded ? "bg-white border-white" : "border-white/20 bg-white/5 group-hover:border-white/40"
+                    }`}>
+                      {allAdded && (
+                        <svg viewBox="0 0 10 8" className="w-full h-full p-0.5" fill="none">
+                          <path d="M1 4l3 3 5-6" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-xs text-zinc-300 group-hover:text-zinc-100 transition-colors">
+                    {cohort.label}
+                    <span className="ml-1 text-zinc-500">({cohort.companies.length})</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
         {(form.target_companies ?? []).length > 0 && (
           <label className="flex items-start gap-3 cursor-pointer group">
             <div className="relative mt-0.5">
