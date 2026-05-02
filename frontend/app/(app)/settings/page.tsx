@@ -46,16 +46,18 @@ function TagInput({
           {rightAction && <div>{rightAction}</div>}
         </div>
       )}
-      <div className="flex flex-wrap gap-1.5 min-h-[32px]">
-        {items.map((item) => (
-          <span key={item} className="flex items-center gap-1 text-xs bg-white/8 border border-white/10 text-zinc-200 px-2.5 py-1 rounded-full">
-            {item}
-            <button onClick={() => onChange(items.filter((i) => i !== item))}>
-              <X className="h-3 w-3 text-zinc-500 hover:text-zinc-300" />
-            </button>
-          </span>
-        ))}
-      </div>
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((item) => (
+            <span key={item} className="flex items-center gap-1 text-xs bg-white/8 border border-white/10 text-zinc-200 px-2.5 py-1 rounded-full">
+              {item}
+              <button onClick={() => onChange(items.filter((i) => i !== item))}>
+                <X className="h-3 w-3 text-zinc-500 hover:text-zinc-300" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex gap-2">
         <input
           value={input}
