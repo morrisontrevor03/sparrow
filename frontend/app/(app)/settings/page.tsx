@@ -10,11 +10,15 @@ const FUNDING_STAGES = ["Pre-seed", "Seed", "Series A", "Series B", "Series C+",
 
 function TagInput({
   label,
+  optional,
+  rightAction,
   items,
   onChange,
   placeholder,
 }: {
-  label: string;
+  label?: string;
+  optional?: boolean;
+  rightAction?: React.ReactNode;
   items: string[];
   onChange: (items: string[]) => void;
   placeholder: string;
@@ -31,7 +35,17 @@ function TagInput({
 
   return (
     <div className="space-y-2">
-      {label && <label className="text-xs font-medium text-zinc-400">{label}</label>}
+      {(label || rightAction) && (
+        <div className="flex items-center justify-between">
+          {label && (
+            <label className="text-xs font-medium text-zinc-400">
+              {label}
+              {optional && <span className="ml-1.5 font-normal text-zinc-600">optional</span>}
+            </label>
+          )}
+          {rightAction && <div>{rightAction}</div>}
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5 min-h-[32px]">
         {items.map((item) => (
           <span key={item} className="flex items-center gap-1 text-xs bg-white/8 border border-white/10 text-zinc-200 px-2.5 py-1 rounded-full">
@@ -59,6 +73,10 @@ function TagInput({
       </div>
     </div>
   );
+}
+
+function Divider() {
+  return <div className="border-t border-white/6" />;
 }
 
 function Toggle({ label, checked, onChange, description }: { label: string; checked: boolean; onChange: (v: boolean) => void; description?: string }) {
@@ -101,156 +119,90 @@ export default function SettingsPage() {
 
   if (isLoading) return <div className="animate-pulse text-zinc-500 text-sm">Loading…</div>;
 
+  const targetCompanies = form.target_companies ?? [];
+
   return (
-    <div className="space-y-8 max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-xl font-semibold">Settings</h1>
         <p className="text-sm text-zinc-400 mt-1">Configure what your agents search for</p>
       </div>
 
-      {/* Job targets */}
+      {/* Preferences */}
       <div className="rounded-xl border border-white/8 bg-white/3 p-6 space-y-5">
-        <h2 className="text-sm font-medium">Job Targets</h2>
+
+        {/* Target roles — required */}
         <TagInput
           label="Target roles"
           items={form.target_roles ?? []}
           onChange={(v) => update({ target_roles: v })}
           placeholder="e.g. Software Engineer"
         />
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-zinc-400">Target companies</span>
-            {(form.target_companies ?? []).length > 0 && (
+
+        <Divider />
+
+        {/* Target companies — optional */}
+        <TagInput
+          label="Target companies"
+          optional
+          rightAction={
+            targetCompanies.length > 0 ? (
               <button
                 onClick={() => update({ target_companies: [] })}
                 className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
               >
-                Clear all ({(form.target_companies ?? []).length})
+                Clear all ({targetCompanies.length})
               </button>
-            )}
-          </div>
-          <TagInput
-            label=""
-            items={form.target_companies ?? []}
-            onChange={(v) => update({ target_companies: v })}
-            placeholder="e.g. Stripe"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-zinc-400">Quick add — YC cohorts</label>
-          <div className="flex flex-wrap gap-2">
-            {YC_COHORTS.map((cohort) => {
-              const current = form.target_companies ?? [];
-              const allAdded = cohort.companies.every((c) => current.includes(c));
-              const toggle = () => {
-                if (allAdded) {
-                  update({ target_companies: current.filter((c) => !cohort.companies.includes(c)) });
-                } else {
-                  const merged = [...current, ...cohort.companies.filter((c) => !current.includes(c))];
-                  update({ target_companies: merged });
-                }
-              };
-              return (
-                <label key={cohort.id} className="flex items-center gap-2 cursor-pointer group">
-                  <div className="relative">
-                    <input type="checkbox" checked={allAdded} onChange={toggle} className="sr-only" />
-                    <div className={`h-4 w-4 rounded border transition-colors ${
-                      allAdded ? "bg-white border-white" : "border-white/20 bg-white/5 group-hover:border-white/40"
-                    }`}>
-                      {allAdded && (
-                        <svg viewBox="0 0 10 8" className="w-full h-full p-0.5" fill="none">
-                          <path d="M1 4l3 3 5-6" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-xs text-zinc-300 group-hover:text-zinc-100 transition-colors">
-                    {cohort.label}
-                    <span className="ml-1 text-zinc-500">({cohort.companies.length})</span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-        {(form.target_companies ?? []).length > 0 && (
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <div className="relative mt-0.5">
-              <input
-                type="checkbox"
-                checked={form.open_to_similar_companies ?? false}
-                onChange={(e) => update({ open_to_similar_companies: e.target.checked })}
-                className="sr-only"
-              />
-              <div className={`h-4 w-4 rounded border transition-colors ${
-                form.open_to_similar_companies
-                  ? "bg-white border-white"
-                  : "border-white/20 bg-white/5 group-hover:border-white/40"
-              }`}>
-                {form.open_to_similar_companies && (
-                  <svg viewBox="0 0 10 8" className="w-full h-full p-0.5" fill="none">
-                    <path d="M1 4l3 3 5-6" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-zinc-200">Also target similar companies</p>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                The networking agent will expand your list to ~25 companies by finding ones similar to the companies you listed.
-              </p>
-            </div>
-          </label>
-        )}
-        <TagInput
-          label="Locations"
-          items={form.target_locations ?? []}
-          onChange={(v) => update({ target_locations: v })}
-          placeholder="e.g. Remote"
+            ) : null
+          }
+          items={targetCompanies}
+          onChange={(v) => update({ target_companies: v })}
+          placeholder="e.g. Stripe"
         />
-        <TagInput
-          label="Excluded companies"
-          items={form.excluded_companies ?? []}
-          onChange={(v) => update({ excluded_companies: v })}
-          placeholder="Companies to skip"
-        />
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400">Min salary ($)</label>
-            <input
-              type="number"
-              value={form.min_salary ?? ""}
-              onChange={(e) => update({ min_salary: e.target.value ? Number(e.target.value) : undefined })}
-              className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-white/20"
-              placeholder="80000"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400">Experience level</label>
-            <select
-              value={form.experience_level ?? ""}
-              onChange={(e) => update({ experience_level: e.target.value || null })}
-              className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-white/20"
-            >
-              <option value="">Any</option>
-              {["entry", "junior", "mid", "senior", "staff", "lead"].map((l) => (
-                <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
 
-      {/* Company criteria */}
-      <div className="rounded-xl border border-white/8 bg-white/3 p-6 space-y-5">
-        <div>
-          <h2 className="text-sm font-medium">Company Criteria</h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            The networking agent will discover up to 20 matching companies per run and search them alongside your manually listed companies.
-          </p>
-        </div>
+        {/* YC cohorts — hidden, not deleted */}
+        {false && (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-zinc-400">Quick add — YC cohorts</label>
+            <div className="flex flex-wrap gap-2">
+              {YC_COHORTS.map((cohort) => {
+                const current = form.target_companies ?? [];
+                const allAdded = cohort.companies.every((c) => current.includes(c));
+                const toggle = () => {
+                  if (allAdded) {
+                    update({ target_companies: current.filter((c) => !cohort.companies.includes(c)) });
+                  } else {
+                    update({ target_companies: [...current, ...cohort.companies.filter((c) => !current.includes(c))] });
+                  }
+                };
+                return (
+                  <label key={cohort.id} className="flex items-center gap-2 cursor-pointer group">
+                    <div className="relative">
+                      <input type="checkbox" checked={allAdded} onChange={toggle} className="sr-only" />
+                      <div className={`h-4 w-4 rounded border transition-colors ${allAdded ? "bg-white border-white" : "border-white/20 bg-white/5 group-hover:border-white/40"}`}>
+                        {allAdded && (
+                          <svg viewBox="0 0 10 8" className="w-full h-full p-0.5" fill="none">
+                            <path d="M1 4l3 3 5-6" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-zinc-300 group-hover:text-zinc-100 transition-colors">
+                      {cohort.label}<span className="ml-1 text-zinc-500">({cohort.companies.length})</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Company criteria — seamlessly integrated */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-zinc-400">Funding stage</label>
+          <label className="text-xs font-medium text-zinc-400">
+            Funding stage
+            <span className="ml-1.5 font-normal text-zinc-600">optional</span>
+          </label>
           <div className="flex flex-wrap gap-3">
             {FUNDING_STAGES.map((stage) => {
               const selected = (form.company_stages ?? []).includes(stage);
@@ -262,9 +214,7 @@ export default function SettingsPage() {
                 <label key={stage} className="flex items-center gap-2 cursor-pointer group">
                   <div className="relative">
                     <input type="checkbox" checked={selected} onChange={toggle} className="sr-only" />
-                    <div className={`h-4 w-4 rounded border transition-colors ${
-                      selected ? "bg-white border-white" : "border-white/20 bg-white/5 group-hover:border-white/40"
-                    }`}>
+                    <div className={`h-4 w-4 rounded border transition-colors ${selected ? "bg-white border-white" : "border-white/20 bg-white/5 group-hover:border-white/40"}`}>
                       {selected && (
                         <svg viewBox="0 0 10 8" className="w-full h-full p-0.5" fill="none">
                           <path d="M1 4l3 3 5-6" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -278,15 +228,68 @@ export default function SettingsPage() {
             })}
           </div>
         </div>
+
         <TagInput
           label="Industries"
+          optional
           items={form.company_industries ?? []}
           onChange={(v) => update({ company_industries: v })}
           placeholder="e.g. AI/ML, Fintech, Healthtech"
         />
+
+        <Divider />
+
+        {/* Locations — required */}
+        <TagInput
+          label="Locations"
+          items={form.target_locations ?? []}
+          onChange={(v) => update({ target_locations: v })}
+          placeholder="e.g. Remote, New York"
+        />
+
+        <Divider />
+
+        {/* Excluded companies — optional */}
+        <TagInput
+          label="Excluded companies"
+          optional
+          items={form.excluded_companies ?? []}
+          onChange={(v) => update({ excluded_companies: v })}
+          placeholder="Companies to skip"
+        />
+
+        <Divider />
+
+        {/* Salary + experience — required */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-zinc-400">Min salary ($)</label>
+            <input
+              type="number"
+              value={form.min_salary ?? ""}
+              onChange={(e) => update({ min_salary: e.target.value ? Number(e.target.value) : undefined })}
+              className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-white/20"
+              placeholder="80000"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-zinc-400">Experience level</label>
+            <select
+              value={form.experience_level ?? ""}
+              onChange={(e) => update({ experience_level: e.target.value || null })}
+              className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-white/20"
+            >
+              <option value="">Any</option>
+              {["entry", "junior", "mid", "senior", "staff", "lead"].map((l) => (
+                <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
       </div>
 
-      {/* Agent toggles */}
+      {/* Agent settings */}
       <div className="rounded-xl border border-white/8 bg-white/3 p-6 space-y-4">
         <h2 className="text-sm font-medium">Agent Settings</h2>
         <Toggle
@@ -295,14 +298,14 @@ export default function SettingsPage() {
           checked={form.scout_enabled ?? true}
           onChange={(v) => update({ scout_enabled: v })}
         />
-        <div className="border-t border-white/6" />
+        <Divider />
         <Toggle
           label="Networking Agent"
           description="Finds contacts at your target companies twice daily"
           checked={form.networking_enabled ?? true}
           onChange={(v) => update({ networking_enabled: v })}
         />
-        <div className="border-t border-white/6" />
+        <Divider />
         <Toggle
           label="Application Agent"
           description="Auto-drafts tailored resumes and cover letters"
