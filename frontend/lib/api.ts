@@ -250,6 +250,8 @@ export interface Preferences {
   location_flexible: boolean;
   work_environment: string[];
   open_to_similar_companies: boolean;
+  company_stages: string[];
+  company_industries: string[];
   scout_enabled: boolean;
   networking_enabled: boolean;
   application_agent_enabled: boolean;

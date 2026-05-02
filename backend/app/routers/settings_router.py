@@ -23,6 +23,8 @@ class PreferencesUpdate(BaseModel):
     location_flexible: bool | None = None
     work_environment: list[str] | None = None
     open_to_similar_companies: bool | None = None
+    company_stages: list[str] | None = None
+    company_industries: list[str] | None = None
     scout_enabled: bool | None = None
     networking_enabled: bool | None = None
     application_agent_enabled: bool | None = None
@@ -41,6 +43,8 @@ class PreferencesResponse(BaseModel):
     location_flexible: bool
     work_environment: list[str]
     open_to_similar_companies: bool
+    company_stages: list[str]
+    company_industries: list[str]
     scout_enabled: bool
     networking_enabled: bool
     application_agent_enabled: bool

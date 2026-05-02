@@ -52,6 +52,8 @@ class UserPreferences(Base):
     location_flexible: Mapped[bool] = mapped_column(Boolean, default=True)
     work_environment: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
     open_to_similar_companies: Mapped[bool] = mapped_column(Boolean, default=False)
+    company_stages: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    company_industries: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
 
     scout_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     networking_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

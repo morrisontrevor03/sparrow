@@ -16,6 +16,8 @@ TARGET_COMPANY_COUNT = 25
 JUNIOR_PREFIXES = ["Junior", "Associate", "Entry Level", "New Grad"]
 FOUNDER_TITLES = ["Founder", "Co-Founder"]
 EXA_SEARCH_URL = "https://api.exa.ai/search"
+DISCOVERY_MODEL = "claude-haiku-4-5-20251001"
+MAX_DISCOVERED_COMPANIES = 20
 
 EXCLUDE_KEYWORDS = {
     "vp", "vice president", "director", "chief", "ceo", "cto", "coo", "cfo",
@@ -124,9 +126,14 @@ class NetworkingAgent(BaseAgent):
         if company:
             companies = [company]
         else:
-            companies = list(prefs.target_companies or [])
+            manual = list(prefs.target_companies or [])
+            discovered = await self._discover_companies(prefs)
+            manual_lower = {_clean_company_name(c).lower() for c in manual}
+            unique_discovered = [c for c in discovered if c.lower() not in manual_lower]
+            companies = manual + unique_discovered
+
         if not companies:
-            return {"summary": "No target companies configured — add companies in Settings"}
+            return {"summary": "No target companies configured — add companies in Settings or set company criteria"}
 
         junior_titles = [
             f"{prefix} {role}"
@@ -156,6 +163,37 @@ class NetworkingAgent(BaseAgent):
             await self._draft_outreach_messages(new_contacts, prefs)
 
         return {"summary": f"Saved {saved} new contacts", "contacts_found": saved}
+
+    async def _discover_companies(self, prefs: UserPreferences) -> list[str]:
+        stages = prefs.company_stages or []
+        industries = prefs.company_industries or []
+        if not stages and not industries:
+            return []
+
+        parts: list[str] = []
+        if stages:
+            parts.append(f"funding stage: {', '.join(stages)}")
+        if industries:
+            parts.append(f"industries: {', '.join(industries)}")
+
+        prompt = (
+            f"List exactly {MAX_DISCOVERED_COMPANIES} real, currently-active technology companies "
+            f"matching ALL of: {'; '.join(parts)}.\n\n"
+            "Rules: one company name per line, no numbering, no extra text, official trading name only "
+            "(e.g. 'Stripe' not 'Stripe Inc.'). If fewer real companies match, return as many as you can."
+        )
+        try:
+            resp = await self.client.messages.create(
+                model=DISCOVERY_MODEL,
+                max_tokens=400,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            self._total_tokens += resp.usage.input_tokens + resp.usage.output_tokens
+            lines = resp.content[0].text.strip().splitlines()
+            return [l.strip() for l in lines if l.strip()][:MAX_DISCOVERED_COMPANIES]
+        except Exception as exc:
+            logger.warning("Company discovery failed: %s", exc)
+            return []
 
     async def _exa_search(
         self, company: str, titles: list[str], max_results: int, allow_founders: bool = False

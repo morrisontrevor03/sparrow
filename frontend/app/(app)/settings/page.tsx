@@ -6,6 +6,8 @@ import { settingsApi, Preferences } from "@/lib/api";
 import { X, Plus } from "lucide-react";
 import { YC_COHORTS } from "@/lib/yc-cohorts";
 
+const FUNDING_STAGES = ["Pre-seed", "Seed", "Series A", "Series B", "Series C+", "Public"] as const;
+
 function TagInput({
   label,
   items,
@@ -237,6 +239,51 @@ export default function SettingsPage() {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Company criteria */}
+      <div className="rounded-xl border border-white/8 bg-white/3 p-6 space-y-5">
+        <div>
+          <h2 className="text-sm font-medium">Company Criteria</h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            The networking agent will discover up to 20 matching companies per run and search them alongside your manually listed companies.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-zinc-400">Funding stage</label>
+          <div className="flex flex-wrap gap-3">
+            {FUNDING_STAGES.map((stage) => {
+              const selected = (form.company_stages ?? []).includes(stage);
+              const toggle = () => {
+                const current = form.company_stages ?? [];
+                update({ company_stages: selected ? current.filter((s) => s !== stage) : [...current, stage] });
+              };
+              return (
+                <label key={stage} className="flex items-center gap-2 cursor-pointer group">
+                  <div className="relative">
+                    <input type="checkbox" checked={selected} onChange={toggle} className="sr-only" />
+                    <div className={`h-4 w-4 rounded border transition-colors ${
+                      selected ? "bg-white border-white" : "border-white/20 bg-white/5 group-hover:border-white/40"
+                    }`}>
+                      {selected && (
+                        <svg viewBox="0 0 10 8" className="w-full h-full p-0.5" fill="none">
+                          <path d="M1 4l3 3 5-6" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-xs text-zinc-300 group-hover:text-zinc-100 transition-colors">{stage}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+        <TagInput
+          label="Industries"
+          items={form.company_industries ?? []}
+          onChange={(v) => update({ company_industries: v })}
+          placeholder="e.g. AI/ML, Fintech, Healthtech"
+        />
       </div>
 
       {/* Agent toggles */}
