@@ -198,7 +198,9 @@ async def resend_verification(current_user: User = Depends(get_current_user), db
     await db.commit()
 
     verify_url = f"{settings.backend_url.rstrip('/')}/api/auth/verify-email?token={token}"
-    await send_email(current_user.email, "Verify your ApplyNow account", verification_email(verify_url))
+    sent = await send_email(current_user.email, "Verify your ApplyNow account", verification_email(verify_url))
+    if not sent:
+        raise HTTPException(status_code=503, detail="Failed to send verification email — try again shortly")
 
     return {"ok": True}
 
