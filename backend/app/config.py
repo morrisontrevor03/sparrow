@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = ""
 
+    # OpenAI (fallback when Anthropic is unavailable)
+    openai_api_key: str = ""
+    openai_fallback_model: str = "gpt-4o-mini"
+
     # Job APIs
     adzuna_app_id: str = ""
     adzuna_app_key: str = ""

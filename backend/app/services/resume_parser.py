@@ -106,8 +106,10 @@ async def parse_resume(file_bytes: bytes, file_type: str) -> tuple[str, dict]:
         if block.type == "tool_use" and block.name == "save_parsed_resume":
             return raw_text, block.input
 
-    logger.warning("Claude did not call the parse tool — falling back to empty structure")
-    return raw_text, {"name": "", "skills": [], "experience": []}
+    raise ValueError(
+        "Resume parser failed to extract structured data — please re-upload the file "
+        "and ensure it contains readable text (not a scanned image)"
+    )
 
 
 def save_upload(file_bytes: bytes, filename: str, user_id: str) -> str:

@@ -2,7 +2,7 @@ import uuid
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,11 +14,20 @@ from app.models.user import User, UserPreferences
 
 router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 
+VALID_OUTREACH_STATUSES = {"discovered", "message_drafted", "sent", "replied", "meeting_scheduled"}
+
 
 class ContactUpdate(BaseModel):
     outreach_status: str | None = None
     notes: str | None = None
     outreach_message: str | None = None
+
+    @field_validator("outreach_status")
+    @classmethod
+    def validate_outreach_status(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_OUTREACH_STATUSES:
+            raise ValueError(f"outreach_status must be one of: {', '.join(sorted(VALID_OUTREACH_STATUSES))}")
+        return v
 
 
 @router.get("")

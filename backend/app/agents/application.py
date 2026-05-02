@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from typing import Any
 
@@ -6,6 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.agents.base import BaseAgent
+
+logger = logging.getLogger(__name__)
 from app.config import settings
 from app.models.application import Application
 from app.models.job import Job
@@ -111,18 +114,21 @@ Instructions:
         )
         jobs = result.scalars().all()
 
-        return json.dumps([
-            {
+        rows = []
+        for j in jobs:
+            desc = j.description or ""
+            if len(desc) > 3000:
+                logger.warning("Truncating job description for '%s' at %s (%d chars)", j.title, j.company, len(desc))
+            rows.append({
                 "job_id": str(j.id),
                 "title": j.title,
                 "company": j.company,
                 "location": j.location,
-                "description": (j.description or "")[:3000],  # Truncate to save tokens
+                "description": desc[:3000],
                 "url": j.url,
                 "match_score": j.match_score,
-            }
-            for j in jobs
-        ])
+            })
+        return json.dumps(rows)
 
     async def _create_draft(self, data: dict) -> str:
         job_id = uuid.UUID(data["job_id"])
@@ -141,13 +147,26 @@ Instructions:
         )
         resume = resume_result.scalar_one_or_none()
 
+        tailored_resume = data.get("tailored_resume")
+        cover_letter = (data.get("cover_letter") or "").strip()
+        quality_ok = (
+            tailored_resume
+            and isinstance(tailored_resume, dict)
+            and len(cover_letter) >= 50
+        )
+        if not quality_ok:
+            logger.warning(
+                "Low-quality draft for '%s' at %s — setting status=draft (tailored=%s, cover_len=%d)",
+                job.title, job.company, bool(tailored_resume), len(cover_letter),
+            )
+
         application = Application(
             user_id=self.user_id,
             job_id=job_id,
             resume_id=resume.id if resume else None,
-            status="ready",
-            tailored_resume=data.get("tailored_resume"),
-            cover_letter=data.get("cover_letter"),
+            status="ready" if quality_ok else "draft",
+            tailored_resume=tailored_resume,
+            cover_letter=cover_letter or None,
             tailoring_notes=data.get("tailoring_notes"),
         )
         self.db.add(application)

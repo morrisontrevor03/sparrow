@@ -1,9 +1,10 @@
 import secrets
 import urllib.parse
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,25 @@ from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserR
 from app.services.email_service import send_email, verification_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Simple in-memory rate limiter: {key: [timestamps]}
+# Not shared across processes; sufficient for a single-instance deployment.
+_rate_store: dict[str, list[datetime]] = defaultdict(list)
+_RATE_WINDOW = timedelta(minutes=15)
+_RATE_MAX = 10
+
+
+def _enforce_rate_limit(request: Request, action: str) -> None:
+    ip = request.client.host if request.client else "unknown"
+    key = f"{action}:{ip}"
+    now = datetime.now(timezone.utc)
+    cutoff = now - _RATE_WINDOW
+    attempts = [t for t in _rate_store[key] if t > cutoff]
+    if len(attempts) >= _RATE_MAX:
+        raise HTTPException(status_code=429, detail="Too many attempts — try again in 15 minutes")
+    attempts.append(now)
+    _rate_store[key] = attempts
+
 
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -136,7 +156,8 @@ async def google_callback(
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    _enforce_rate_limit(request, "register")
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -166,7 +187,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/verify-email")
-async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+async def verify_email(request: Request, token: str, db: AsyncSession = Depends(get_db)):
+    _enforce_rate_limit(request, "verify-email")
     frontend_url = settings.frontend_url.rstrip("/")
 
     result = await db.execute(select(User).where(User.verification_token == token))
@@ -206,7 +228,8 @@ async def resend_verification(current_user: User = Depends(get_current_user), db
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    _enforce_rate_limit(request, "login")
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):

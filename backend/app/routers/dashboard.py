@@ -60,15 +60,13 @@ async def get_stats(
     prefs = prefs_result.scalar_one_or_none()
     target_roles_configured = bool(prefs and prefs.target_roles)
 
-    # Agent run counts this month
-    async def _run_count(agent_type: str) -> int:
-        return await db.scalar(
-            select(func.count(AgentRun.id)).where(
-                AgentRun.user_id == current_user.id,
-                AgentRun.agent_type == agent_type,
-                AgentRun.started_at >= month_start,
-            )
-        ) or 0
+    # Agent run counts this month — single GROUP BY instead of 3 separate queries
+    run_counts_result = await db.execute(
+        select(AgentRun.agent_type, func.count(AgentRun.id).label("cnt"))
+        .where(AgentRun.user_id == current_user.id, AgentRun.started_at >= month_start)
+        .group_by(AgentRun.agent_type)
+    )
+    run_counts = {row.agent_type: row.cnt for row in run_counts_result}
 
     run_limit = None if plan == "pro" else app_settings.free_agent_runs_per_month
 
@@ -85,9 +83,9 @@ async def get_stats(
             "jobs_limit": None if plan == "pro" else app_settings.free_jobs_per_month,
             "contacts_limit": None if plan == "pro" else app_settings.free_contacts_per_month,
             "agent_runs": {
-                "job_scout": await _run_count("job_scout"),
-                "networking": await _run_count("networking"),
-                "application": await _run_count("application"),
+                "job_scout": run_counts.get("job_scout", 0),
+                "networking": run_counts.get("networking", 0),
+                "application": run_counts.get("application", 0),
             },
             "agent_runs_limit": run_limit,
         },

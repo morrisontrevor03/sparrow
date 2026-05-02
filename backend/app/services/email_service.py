@@ -39,6 +39,7 @@ async def send_email(to: str, subject: str, html: str) -> bool:
 
 
 def _base_wrapper(badge_color: str, badge_text: str, title: str, body_html: str) -> str:
+    settings_url = f"{settings.frontend_url}/settings"
     return f"""
     <div style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; background: #09090b; color: #fafafa; padding: 32px; border-radius: 12px;">
       <div style="margin-bottom: 24px;">
@@ -46,6 +47,10 @@ def _base_wrapper(badge_color: str, badge_text: str, title: str, body_html: str)
       </div>
       <h1 style="font-size: 22px; font-weight: 700; margin: 0 0 20px;">{title}</h1>
       {body_html}
+      <p style="color: #52525b; font-size: 11px; margin-top: 32px; padding-top: 16px; border-top: 1px solid #27272a;">
+        You're receiving this because you have an ApplyNow account.
+        <a href="{settings_url}" style="color: #71717a; text-decoration: underline;">Manage notification preferences</a>
+      </p>
     </div>
     """
 

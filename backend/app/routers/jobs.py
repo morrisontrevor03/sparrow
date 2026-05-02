@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,7 @@ class JobResponse(BaseModel):
     salary_min: int | None
     salary_max: int | None
     employment_type: str | None
+    posted_at: str | None
     match_score: float | None
     match_reasoning: str | None
     is_new: bool
@@ -64,15 +65,7 @@ async def list_jobs(
 
     result = await db.execute(query)
     jobs = result.scalars().all()
-    return [
-        {
-            **{c.key: getattr(j, c.key) for c in j.__table__.columns},
-            "id": str(j.id),
-            "discovered_at": j.discovered_at.isoformat() if j.discovered_at else None,
-            "posted_at": j.posted_at.isoformat() if j.posted_at else None,
-        }
-        for j in jobs
-    ]
+    return [_serialize_job(j) for j in jobs]
 
 
 @router.get("/{job_id}")
@@ -84,19 +77,33 @@ async def get_job(
     result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == current_user.id))
     job = result.scalar_one_or_none()
     if not job:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Mark as seen
     job.is_new = False
     await db.commit()
 
+    return _serialize_job(job)
+
+
+def _serialize_job(j: Job) -> dict:
     return {
-        **{c.key: getattr(job, c.key) for c in job.__table__.columns},
-        "id": str(job.id),
-        "user_id": str(job.user_id),
-        "discovered_at": job.discovered_at.isoformat() if job.discovered_at else None,
-        "posted_at": job.posted_at.isoformat() if job.posted_at else None,
+        "id": str(j.id),
+        "external_id": j.external_id,
+        "source": j.source,
+        "title": j.title,
+        "company": j.company,
+        "location": j.location,
+        "description": j.description,
+        "url": j.url,
+        "salary_min": j.salary_min,
+        "salary_max": j.salary_max,
+        "employment_type": j.employment_type,
+        "posted_at": j.posted_at.isoformat() if j.posted_at else None,
+        "match_score": j.match_score,
+        "match_reasoning": j.match_reasoning,
+        "is_new": j.is_new,
+        "is_dismissed": j.is_dismissed,
+        "discovered_at": j.discovered_at.isoformat() if j.discovered_at else None,
     }
 
 
@@ -109,7 +116,6 @@ async def dismiss_job(
     result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == current_user.id))
     job = result.scalar_one_or_none()
     if not job:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Job not found")
     job.is_dismissed = True
     await db.commit()

@@ -6,11 +6,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.base import BaseAgent
+from app.models.contact import Contact
 from app.models.job import Job
+from app.models.resume import Resume
 from app.models.user import User, UserPreferences
 from app.services import job_api_client, quota
 from app.services.email_service import new_jobs_digest_email, send_email
 from app.config import settings
+
+# Ordered so higher index = warmer relationship
+_OUTREACH_RANK = {
+    "discovered": 0,
+    "message_drafted": 1,
+    "sent": 2,
+    "replied": 3,
+    "meeting_scheduled": 4,
+}
 
 TOOLS = [
     {
@@ -76,6 +87,41 @@ TOOLS = [
 class JobScoutAgent(BaseAgent):
     agent_type = "job_scout"
 
+    async def _build_user_context(self) -> dict:
+        """Return resume skills/experience and networking warmth keyed by company name."""
+        ctx: dict = {"skills": [], "experience_roles": [], "networked_companies": {}}
+
+        resume_result = await self.db.execute(
+            select(Resume).where(Resume.user_id == self.user_id, Resume.is_active == True)
+        )
+        resume = resume_result.scalar_one_or_none()
+        if resume and resume.structured_data:
+            data = resume.structured_data
+            ctx["skills"] = data.get("skills", [])
+            ctx["experience_roles"] = [
+                exp["role"] for exp in data.get("experience", []) if exp.get("role")
+            ]
+
+        contacts_result = await self.db.execute(
+            select(Contact).where(Contact.user_id == self.user_id)
+        )
+        for contact in contacts_result.scalars().all():
+            company = contact.company
+            if company not in ctx["networked_companies"]:
+                ctx["networked_companies"][company] = {
+                    "contact_count": 0,
+                    "highest_status": "discovered",
+                    "has_meeting": False,
+                }
+            entry = ctx["networked_companies"][company]
+            entry["contact_count"] += 1
+            if _OUTREACH_RANK.get(contact.outreach_status, 0) > _OUTREACH_RANK.get(entry["highest_status"], 0):
+                entry["highest_status"] = contact.outreach_status
+            if contact.outreach_status == "meeting_scheduled":
+                entry["has_meeting"] = True
+
+        return ctx
+
     async def _execute(self, **kwargs) -> dict:
         # Load user + preferences
         user_result = await self.db.execute(select(User).where(User.id == self.user_id))
@@ -94,6 +140,24 @@ class JobScoutAgent(BaseAgent):
         )
         existing = {(row.external_id, row.source) for row in existing_result}
 
+        ctx = await self._build_user_context()
+
+        # Format networking signals for the prompt
+        networking_lines: list[str] = []
+        for company, info in ctx["networked_companies"].items():
+            status = info["highest_status"]
+            count = info["contact_count"]
+            meeting_flag = " (had a meeting)" if info["has_meeting"] else ""
+            networking_lines.append(f"  - {company}: {count} contact(s), warmest status = {status}{meeting_flag}")
+        networking_section = (
+            "\n".join(networking_lines)
+            if networking_lines
+            else "  (none yet)"
+        )
+
+        skills_line = ", ".join(ctx["skills"]) if ctx["skills"] else "not parsed"
+        exp_line = ", ".join(ctx["experience_roles"]) if ctx["experience_roles"] else "not parsed"
+
         system_prompt = f"""You are the ApplyNow Job Scout. Your job is to find highly relevant job postings for a user.
 
 User profile:
@@ -104,13 +168,25 @@ User profile:
 - Employment types: {prefs.employment_types or ["full_time"]}
 - Excluded companies: {prefs.excluded_companies or []}
 
-Instructions:
+Resume signals:
+- Skills: {skills_line}
+- Past experience roles: {exp_line}
+
+Networking warm signals (companies where the user already has contacts):
+{networking_section}
+
+Scoring instructions:
 1. Search for jobs using both Adzuna and JSearch with varied keyword combinations from the target roles.
-2. Score each job 0.0 to 1.0 based on how well it matches the user's profile. Be strict — 0.85+ means excellent match.
-3. Only include jobs with score >= 0.6.
-4. Exclude jobs from excluded companies.
-5. Call save_scored_jobs once with all the qualified results.
-6. Do not save jobs with these (external_id, source) pairs as they already exist: {list(existing)[:50]}
+   Use resume skills and past role titles to enrich search keywords (e.g. if the resume lists "dbt" or "Spark", include those).
+2. Base score (0.0–1.0): how well the role and requirements match the user's profile. Be strict — 0.85+ means excellent match.
+3. Networking boost: add +0.10 if the job's company appears in the warm signals with status "sent" or "replied".
+   Add +0.15 if status is "meeting_scheduled". Cap final score at 1.0.
+4. Skill match boost: add +0.05 if the job description explicitly mentions 2+ of the user's resume skills.
+5. Only include jobs with final score >= 0.6.
+6. Exclude jobs from excluded companies.
+7. In match_reasoning, always mention if a networking or skill boost was applied (e.g. "Boosted +0.15: you had a meeting with someone at Acme Corp").
+8. Call save_scored_jobs once with all qualified results.
+9. Do not save jobs with these (external_id, source) pairs as they already exist: {list(existing)[:50]}
 """
 
         initial_message = (
@@ -214,9 +290,10 @@ Instructions:
                 jobs_payload.sort(key=lambda j: j["match_score"], reverse=True)
                 html = new_jobs_digest_email(jobs_payload, settings.frontend_url)
                 subject = f"{saved} new job{'s' if saved != 1 else ''} found — apply early"
-                await send_email(user.email, subject, html)
-                for job in new_jobs:
-                    job.email_sent = True
-                await self.db.commit()
+                sent = await send_email(user.email, subject, html)
+                if sent:
+                    for job in new_jobs:
+                        job.email_sent = True
+                    await self.db.commit()
 
         return f"Saved {saved} jobs. Digest email sent with {len(new_jobs)} jobs."

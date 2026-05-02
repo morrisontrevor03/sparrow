@@ -11,7 +11,9 @@ from app.models.subscription import MonthlyUsage, Subscription
 async def get_plan(db: AsyncSession, user_id: uuid.UUID) -> str:
     result = await db.execute(select(Subscription).where(Subscription.user_id == user_id))
     sub = result.scalar_one_or_none()
-    return sub.plan if sub and sub.status == "active" else "free"
+    # Only grant pro if both plan="pro" AND status="active" — guards against
+    # canceled/past_due rows where plan hasn't been reset yet.
+    return "pro" if (sub and sub.plan == "pro" and sub.status == "active") else "free"
 
 
 async def _get_or_create_usage(db: AsyncSession, user_id: uuid.UUID) -> MonthlyUsage:
@@ -38,7 +40,7 @@ async def can_surface_job(db: AsyncSession, user_id: uuid.UUID) -> bool:
 async def increment_jobs_surfaced(db: AsyncSession, user_id: uuid.UUID, count: int = 1):
     usage = await _get_or_create_usage(db, user_id)
     usage.jobs_surfaced += count
-    await db.flush()
+    await db.flush()  # flush only — caller is responsible for commit
 
 
 async def can_surface_contact(db: AsyncSession, user_id: uuid.UUID) -> bool:
@@ -52,7 +54,7 @@ async def can_surface_contact(db: AsyncSession, user_id: uuid.UUID) -> bool:
 async def increment_contacts_surfaced(db: AsyncSession, user_id: uuid.UUID, count: int = 1):
     usage = await _get_or_create_usage(db, user_id)
     usage.contacts_surfaced += count
-    await db.flush()
+    await db.flush()  # flush only — caller is responsible for commit
 
 
 async def can_run_agent(db: AsyncSession, user_id: uuid.UUID, agent_type: str) -> bool:

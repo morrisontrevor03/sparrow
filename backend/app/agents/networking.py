@@ -98,6 +98,41 @@ def _score_title(title: str) -> float:
     return 0.75
 
 
+def _extract_seniority(title: str) -> str:
+    t = title.lower()
+    if any(k in t for k in FOUNDER_KEYWORDS):
+        return "executive"
+    if any(k in t for k in EXCLUDE_KEYWORDS):
+        return "executive"
+    if any(k in t for k in MANAGER_KEYWORDS):
+        return "manager"
+    if any(k in t for k in JUNIOR_KEYWORDS):
+        return "entry"
+    if any(k in t for k in RECRUITER_KEYWORDS):
+        return "recruiting"
+    return "mid"
+
+
+_DEPT_KEYWORDS: list[tuple[str, list[str]]] = [
+    ("engineering", ["engineer", "developer", "swe", "backend", "frontend", "fullstack", "devops", "infra", "data", "ml", "ai", "platform"]),
+    ("product", ["product manager", "pm ", "product lead"]),
+    ("design", ["designer", "ux", "ui ", "creative"]),
+    ("sales", ["sales", "account executive", "ae ", "business development", "bdr", "sdr"]),
+    ("marketing", ["marketing", "growth", "content", "seo", "brand"]),
+    ("recruiting", ["recruiter", "talent", "sourcer", "staffing"]),
+    ("finance", ["finance", "accounting", "controller", "cfo", "analyst"]),
+    ("operations", ["operations", "ops", "program manager", "chief of staff"]),
+]
+
+
+def _extract_department(title: str) -> str | None:
+    t = title.lower()
+    for dept, keywords in _DEPT_KEYWORDS:
+        if any(k in t for k in keywords):
+            return dept
+    return None
+
+
 class NetworkingAgent(BaseAgent):
     agent_type = "networking"
     max_iterations = 1  # unused but required by base
@@ -187,13 +222,8 @@ class NetworkingAgent(BaseAgent):
             "Rules: one company name per line, no numbering, no extra text, official trading name only "
             "(e.g. 'Stripe' not 'Stripe Inc.'). If fewer real companies match, return as many as you can."
         )
-        resp = await self.client.messages.create(
-            model=DISCOVERY_MODEL,
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        self._total_tokens += resp.usage.input_tokens + resp.usage.output_tokens
-        lines = resp.content[0].text.strip().splitlines()
+        text = await self.complete(prompt, model=DISCOVERY_MODEL, max_tokens=400)
+        lines = text.splitlines()
         companies = [l.strip() for l in lines if l.strip()][:MAX_DISCOVERED_COMPANIES]
         logger.info("Discovered %d companies", len(companies))
         return companies
@@ -225,6 +255,19 @@ class NetworkingAgent(BaseAgent):
                 )
                 resp.raise_for_status()
                 data = resp.json()
+        except httpx.TimeoutException:
+            logger.warning("Exa timeout for '%s' — skipping company this run", company)
+            return []
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 429:
+                logger.warning("Exa rate limit hit for '%s' — sleeping 5s", company)
+                await asyncio.sleep(5)
+            elif status in (401, 403):
+                logger.error("Exa auth error (HTTP %d) — check EXA_API_KEY", status)
+            else:
+                logger.warning("Exa HTTP %d for '%s': %s", status, company, exc.response.text[:200])
+            return []
         except Exception as exc:
             logger.warning("Exa search error for '%s': %s", company, exc)
             return []
@@ -328,13 +371,7 @@ class NetworkingAgent(BaseAgent):
                 "culture, never ask for a job or referral directly. Return only the message text, no subject line."
             )
             try:
-                resp = await self.client.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=300,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                self._total_tokens += resp.usage.input_tokens + resp.usage.output_tokens
-                contact.outreach_message = resp.content[0].text.strip()
+                contact.outreach_message = await self.complete(prompt, max_tokens=300)
             except Exception as exc:
                 logger.warning("Outreach draft failed for contact %s: %s", contact.id, exc)
 
@@ -358,16 +395,17 @@ class NetworkingAgent(BaseAgent):
                 if existing.scalar_one_or_none():
                     continue
 
+            title = item.get("title", "")
             contact = Contact(
                 user_id=self.user_id,
                 company=item.get("company", ""),
                 first_name=item.get("first_name", ""),
                 last_name=item.get("last_name"),
-                title=item.get("title", ""),
+                title=title,
                 linkedin_url=linkedin_url or None,
                 email=None,
-                seniority=None,
-                department=None,
+                seniority=_extract_seniority(title),
+                department=_extract_department(title),
                 relevance_score=float(item.get("relevance_score", 0)),
                 relevance_reasoning=item.get("relevance_reasoning"),
                 outreach_message=None,

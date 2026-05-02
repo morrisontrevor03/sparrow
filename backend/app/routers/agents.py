@@ -1,3 +1,5 @@
+import uuid
+
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -18,10 +20,23 @@ class SingleCompanyRequest(BaseModel):
     company: str
 
 
-async def _run_agent(agent_class, user_id, trigger: str, **kwargs):
+async def _run_agent(agent_class, user_id, trigger: str, run_id: uuid.UUID | None = None, **kwargs):
     async with AsyncSessionLocal() as db:
         agent = agent_class(db, user_id)
-        await agent.run(trigger=trigger, **kwargs)
+        await agent.run(trigger=trigger, _run_id=run_id, **kwargs)
+
+
+async def _pre_create_run(user_id: uuid.UUID, agent_type: str, trigger: str) -> uuid.UUID:
+    async with AsyncSessionLocal() as db:
+        run = AgentRun(
+            user_id=user_id,
+            agent_type=agent_type,
+            trigger=trigger,
+            status="queued",
+        )
+        db.add(run)
+        await db.commit()
+        return run.id
 
 
 @router.post("/job-scout/run")
@@ -33,8 +48,9 @@ async def trigger_job_scout(
     if not await quota.can_run_agent(db, current_user.id, "job_scout"):
         raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited agent runs")
     from app.agents.job_scout import JobScoutAgent
-    background_tasks.add_task(_run_agent, JobScoutAgent, current_user.id, "manual")
-    return {"ok": True, "message": "Job Scout started"}
+    run_id = await _pre_create_run(current_user.id, "job_scout", "manual")
+    background_tasks.add_task(_run_agent, JobScoutAgent, current_user.id, "manual", run_id=run_id)
+    return {"ok": True, "run_id": str(run_id), "message": "Job Scout started"}
 
 
 @router.post("/networking/run")
@@ -46,8 +62,9 @@ async def trigger_networking(
     if not await quota.can_run_agent(db, current_user.id, "networking"):
         raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited agent runs")
     from app.agents.networking import NetworkingAgent
-    background_tasks.add_task(_run_agent, NetworkingAgent, current_user.id, "manual")
-    return {"ok": True, "message": "Networking Agent started"}
+    run_id = await _pre_create_run(current_user.id, "networking", "manual")
+    background_tasks.add_task(_run_agent, NetworkingAgent, current_user.id, "manual", run_id=run_id)
+    return {"ok": True, "run_id": str(run_id), "message": "Networking Agent started"}
 
 
 @router.post("/networking/run-single")
@@ -60,10 +77,11 @@ async def trigger_networking_single(
     if not await quota.can_run_agent(db, current_user.id, "networking"):
         raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited agent runs")
     from app.agents.networking import NetworkingAgent
+    run_id = await _pre_create_run(current_user.id, "networking", "manual")
     background_tasks.add_task(
-        _run_agent, NetworkingAgent, current_user.id, "manual", company=body.company
+        _run_agent, NetworkingAgent, current_user.id, "manual", run_id=run_id, company=body.company
     )
-    return {"ok": True, "message": f"Networking Agent started for {body.company}"}
+    return {"ok": True, "run_id": str(run_id), "message": f"Networking Agent started for {body.company}"}
 
 
 @router.post("/application/run")
@@ -75,8 +93,9 @@ async def trigger_application_agent(
     if not await quota.can_run_agent(db, current_user.id, "application"):
         raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited agent runs")
     from app.agents.application import ApplicationAgent
-    background_tasks.add_task(_run_agent, ApplicationAgent, current_user.id, "manual")
-    return {"ok": True, "message": "Application Agent started"}
+    run_id = await _pre_create_run(current_user.id, "application", "manual")
+    background_tasks.add_task(_run_agent, ApplicationAgent, current_user.id, "manual", run_id=run_id)
+    return {"ok": True, "run_id": str(run_id), "message": "Application Agent started"}
 
 
 @router.post("/test-email")
