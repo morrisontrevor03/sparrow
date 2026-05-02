@@ -1,5 +1,6 @@
 import secrets
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,6 +14,7 @@ from app.dependencies import create_access_token, get_current_user, hash_passwor
 from app.models.subscription import Subscription
 from app.models.user import User, UserPreferences
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.services.email_service import send_email, verification_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -23,6 +25,12 @@ _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 def _google_redirect_uri() -> str:
     return f"{settings.backend_url.rstrip('/')}/api/auth/google/callback"
+
+
+def _make_verification_token() -> tuple[str, datetime]:
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    return token, expires
 
 
 @router.get("/google/login")
@@ -57,8 +65,6 @@ async def google_callback(
     error: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    from fastapi import Request  # local import avoids circular issues at module level
-
     frontend_url = settings.frontend_url.rstrip("/")
 
     if error or not code:
@@ -97,13 +103,24 @@ async def google_callback(
         user = result.scalar_one_or_none()
         if user:
             user.google_id = google_id
+            user.is_verified = True  # Google already verified this email
         else:
             new_user = True
-            user = User(email=email, hashed_password=None, full_name=full_name, google_id=google_id)
+            user = User(
+                email=email,
+                hashed_password=None,
+                full_name=full_name,
+                google_id=google_id,
+                is_verified=True,  # Google already verified this email
+            )
             db.add(user)
             await db.flush()
             db.add(UserPreferences(user_id=user.id))
             db.add(Subscription(user_id=user.id, plan="free"))
+    else:
+        # Ensure existing Google users are marked verified
+        if not user.is_verified:
+            user.is_verified = True
 
     await db.commit()
     await db.refresh(user)
@@ -124,26 +141,66 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    token, expires = _make_verification_token()
     user = User(
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
+        is_verified=False,
+        verification_token=token,
+        verification_token_expires=expires,
     )
     db.add(user)
     await db.flush()
 
-    # Create default preferences
-    prefs = UserPreferences(user_id=user.id)
-    db.add(prefs)
-
-    # Create free subscription
-    sub = Subscription(user_id=user.id, plan="free")
-    db.add(sub)
+    db.add(UserPreferences(user_id=user.id))
+    db.add(Subscription(user_id=user.id, plan="free"))
 
     await db.commit()
     await db.refresh(user)
 
+    verify_url = f"{settings.backend_url.rstrip('/')}/api/auth/verify-email?token={token}"
+    await send_email(user.email, "Verify your ApplyNow account", verification_email(verify_url))
+
     return TokenResponse(access_token=create_access_token(user.id))
+
+
+@router.get("/verify-email")
+async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+    frontend_url = settings.frontend_url.rstrip("/")
+
+    result = await db.execute(select(User).where(User.verification_token == token))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return RedirectResponse(url=f"{frontend_url}/login?error=invalid_token", status_code=302)
+
+    now = datetime.now(timezone.utc)
+    if user.verification_token_expires and user.verification_token_expires < now:
+        return RedirectResponse(url=f"{frontend_url}/login?error=token_expired", status_code=302)
+
+    user.is_verified = True
+    user.verification_token = None
+    user.verification_token_expires = None
+    await db.commit()
+
+    return RedirectResponse(url=f"{frontend_url}/login?verified=true", status_code=302)
+
+
+@router.post("/resend-verification")
+async def resend_verification(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if current_user.is_verified:
+        raise HTTPException(status_code=400, detail="Email already verified")
+
+    token, expires = _make_verification_token()
+    current_user.verification_token = token
+    current_user.verification_token_expires = expires
+    await db.commit()
+
+    verify_url = f"{settings.backend_url.rstrip('/')}/api/auth/verify-email?token={token}"
+    await send_email(current_user.email, "Verify your ApplyNow account", verification_email(verify_url))
+
+    return {"ok": True}
 
 
 @router.post("/login", response_model=TokenResponse)

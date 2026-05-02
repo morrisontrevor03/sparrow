@@ -9,7 +9,7 @@ from app.agents.base import BaseAgent
 from app.models.job import Job
 from app.models.user import User, UserPreferences
 from app.services import job_api_client, quota
-from app.services.email_service import job_alert_email, send_email
+from app.services.email_service import new_jobs_digest_email, send_email
 from app.config import settings
 
 TOOLS = [
@@ -149,7 +149,7 @@ Instructions:
 
     async def _save_jobs(self, jobs_data: list[dict]) -> str:
         saved = 0
-        high_match_jobs = []
+        new_jobs = []
 
         for item in jobs_data:
             # Check quota
@@ -188,28 +188,35 @@ Instructions:
             await self.db.flush()
             await quota.increment_jobs_surfaced(self.db, self.user_id)
             saved += 1
-
-            if float(item.get("match_score", 0)) >= 0.85:
-                high_match_jobs.append((job, item))
+            new_jobs.append(job)
 
         await self.db.commit()
         self._jobs_saved = saved
 
-        # Send email alerts for high-match jobs
-        user_result = await self.db.execute(select(User).where(User.id == self.user_id))
-        user = user_result.scalar_one_or_none()
-        if user:
-            for job, item in high_match_jobs:
-                html = job_alert_email(
-                    job.title,
-                    job.company,
-                    job.url,
-                    job.match_score,
-                    job.match_reasoning or "",
-                    f"{settings.frontend_url}/jobs/{job.id}",
-                )
-                await send_email(user.email, f"New match: {job.title} at {job.company}", html)
-                job.email_sent = True
+        # Send a single digest email for all newly found jobs
+        if saved > 0:
+            user_result = await self.db.execute(select(User).where(User.id == self.user_id))
+            user = user_result.scalar_one_or_none()
+            if user:
+                jobs_payload = [
+                    {
+                        "id": str(job.id),
+                        "title": job.title,
+                        "company": job.company,
+                        "location": job.location,
+                        "url": job.url,
+                        "match_score": job.match_score or 0,
+                        "match_reasoning": job.match_reasoning or "",
+                    }
+                    for job in new_jobs
+                ]
+                # Sort highest match first
+                jobs_payload.sort(key=lambda j: j["match_score"], reverse=True)
+                html = new_jobs_digest_email(jobs_payload, settings.frontend_url)
+                subject = f"{saved} new job{'s' if saved != 1 else ''} found — apply early"
+                await send_email(user.email, subject, html)
+                for job in new_jobs:
+                    job.email_sent = True
+                await self.db.commit()
 
-        await self.db.commit()
-        return f"Saved {saved} jobs. {len(high_match_jobs)} high-match email alerts sent."
+        return f"Saved {saved} jobs. Digest email sent with {len(new_jobs)} jobs."
