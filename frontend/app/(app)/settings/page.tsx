@@ -29,7 +29,7 @@ function TagInput({
 
   return (
     <div className="space-y-2">
-      <label className="text-xs font-medium text-zinc-400">{label}</label>
+      {label && <label className="text-xs font-medium text-zinc-400">{label}</label>}
       <div className="flex flex-wrap gap-1.5 min-h-[32px]">
         {items.map((item) => (
           <span key={item} className="flex items-center gap-1 text-xs bg-white/8 border border-white/10 text-zinc-200 px-2.5 py-1 rounded-full">
@@ -115,12 +115,25 @@ export default function SettingsPage() {
           onChange={(v) => update({ target_roles: v })}
           placeholder="e.g. Software Engineer"
         />
-        <TagInput
-          label="Target companies"
-          items={form.target_companies ?? []}
-          onChange={(v) => update({ target_companies: v })}
-          placeholder="e.g. Stripe"
-        />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-zinc-400">Target companies</span>
+            {(form.target_companies ?? []).length > 0 && (
+              <button
+                onClick={() => update({ target_companies: [] })}
+                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                Clear all ({(form.target_companies ?? []).length})
+              </button>
+            )}
+          </div>
+          <TagInput
+            label=""
+            items={form.target_companies ?? []}
+            onChange={(v) => update({ target_companies: v })}
+            placeholder="e.g. Stripe"
+          />
+        </div>
         <div className="space-y-2">
           <label className="text-xs font-medium text-zinc-400">Quick add — YC cohorts</label>
           <div className="flex flex-wrap gap-2">
