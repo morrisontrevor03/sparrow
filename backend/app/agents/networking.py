@@ -112,8 +112,8 @@ class NetworkingAgent(BaseAgent):
             select(UserPreferences).where(UserPreferences.user_id == self.user_id)
         )
         prefs = prefs_result.scalar_one_or_none()
-        if not prefs or not prefs.target_roles:
-            return {"summary": "No target roles configured"}
+        if not prefs:
+            return {"summary": "No preferences found"}
 
         existing_result = await self.db.execute(
             select(Contact.linkedin_url).where(
@@ -134,6 +134,9 @@ class NetworkingAgent(BaseAgent):
 
         if not companies:
             return {"summary": "No target companies configured — add companies in Settings or set company criteria"}
+
+        if not prefs.target_roles:
+            return {"summary": f"Found {len(companies)} companies but no target roles configured — add roles in Settings"}
 
         junior_titles = [
             f"{prefix} {role}"
@@ -165,8 +168,8 @@ class NetworkingAgent(BaseAgent):
         return {"summary": f"Saved {saved} new contacts", "contacts_found": saved}
 
     async def _discover_companies(self, prefs: UserPreferences) -> list[str]:
-        stages = prefs.company_stages or []
-        industries = prefs.company_industries or []
+        stages = getattr(prefs, "company_stages", None) or []
+        industries = getattr(prefs, "company_industries", None) or []
         if not stages and not industries:
             return []
 
@@ -176,24 +179,24 @@ class NetworkingAgent(BaseAgent):
         if industries:
             parts.append(f"industries: {', '.join(industries)}")
 
+        logger.info("Discovering companies for criteria: %s", "; ".join(parts))
+
         prompt = (
             f"List exactly {MAX_DISCOVERED_COMPANIES} real, currently-active technology companies "
             f"matching ALL of: {'; '.join(parts)}.\n\n"
             "Rules: one company name per line, no numbering, no extra text, official trading name only "
             "(e.g. 'Stripe' not 'Stripe Inc.'). If fewer real companies match, return as many as you can."
         )
-        try:
-            resp = await self.client.messages.create(
-                model=DISCOVERY_MODEL,
-                max_tokens=400,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            self._total_tokens += resp.usage.input_tokens + resp.usage.output_tokens
-            lines = resp.content[0].text.strip().splitlines()
-            return [l.strip() for l in lines if l.strip()][:MAX_DISCOVERED_COMPANIES]
-        except Exception as exc:
-            logger.warning("Company discovery failed: %s", exc)
-            return []
+        resp = await self.client.messages.create(
+            model=DISCOVERY_MODEL,
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._total_tokens += resp.usage.input_tokens + resp.usage.output_tokens
+        lines = resp.content[0].text.strip().splitlines()
+        companies = [l.strip() for l in lines if l.strip()][:MAX_DISCOVERED_COMPANIES]
+        logger.info("Discovered %d companies", len(companies))
+        return companies
 
     async def _exa_search(
         self, company: str, titles: list[str], max_results: int, allow_founders: bool = False
