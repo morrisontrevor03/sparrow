@@ -77,9 +77,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+def _cors_origins() -> list[str]:
+    url = settings.frontend_url.rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+    return [url]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
