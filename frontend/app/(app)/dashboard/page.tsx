@@ -186,7 +186,6 @@ export default function DashboardPage() {
           {[
             { label: "Job Scout", fn: agents.runJobScout },
             { label: "Networking", fn: agents.runNetworking },
-            { label: "Application Drafts", fn: agents.runApplication },
           ].map(({ label, fn }) => (
             <button
               key={label}
