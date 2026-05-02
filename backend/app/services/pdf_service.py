@@ -17,8 +17,8 @@ from reportlab.platypus import (
 def _styles() -> dict:
     base = getSampleStyleSheet()["Normal"]
     return {
-        "name": ParagraphStyle("Name", parent=base, fontSize=20, fontName="Helvetica-Bold", spaceAfter=3),
-        "contact": ParagraphStyle("Contact", parent=base, fontSize=10, textColor=colors.HexColor("#666666"), spaceAfter=14),
+        "name": ParagraphStyle("Name", parent=base, fontSize=20, fontName="Helvetica-Bold", leading=24, spaceAfter=6),
+        "contact": ParagraphStyle("Contact", parent=base, fontSize=10, leading=14, textColor=colors.HexColor("#666666"), spaceAfter=14),
         "section": ParagraphStyle("Section", parent=base, fontSize=9, fontName="Helvetica-Bold", spaceBefore=14, spaceAfter=4, textColor=colors.HexColor("#333333")),
         "body": ParagraphStyle("Body", parent=base, fontSize=10, leading=16, spaceAfter=8),
         "role": ParagraphStyle("Role", parent=base, fontSize=10, fontName="Helvetica-Bold", spaceAfter=1),
