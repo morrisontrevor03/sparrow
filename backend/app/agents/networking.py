@@ -150,7 +150,11 @@ class NetworkingAgent(BaseAgent):
 
         logger.info("Networking: %d raw profiles collected", len(contacts))
 
-        saved = await self._save_contacts(contacts)
+        saved, new_contacts = await self._save_contacts(contacts)
+
+        if saved > 0:
+            await self._draft_outreach_messages(new_contacts, prefs)
+
         return {"summary": f"Saved {saved} new contacts", "contacts_found": saved}
 
     async def _exa_search(
@@ -269,8 +273,35 @@ class NetworkingAgent(BaseAgent):
             return "Manager/Lead — useful for team context at smaller companies"
         return "Mid-level IC in relevant team"
 
-    async def _save_contacts(self, contacts: list[dict]) -> int:
+    async def _draft_outreach_messages(self, contacts: list[Contact], prefs: UserPreferences) -> None:
+        experience = prefs.experience_level or "entry"
+        roles = prefs.target_roles or ["software engineering"]
+        roles_str = ", ".join(roles[:3])
+
+        for contact in contacts:
+            prompt = (
+                f"Write a warm, concise LinkedIn cold outreach message (2-3 sentences) from a "
+                f"{experience}-level job seeker targeting {roles_str} roles "
+                f"to {contact.first_name} {contact.last_name}, who is a {contact.title} at {contact.company}.\n\n"
+                "Rules: reference the company or team (not their title), ask to learn about the team or "
+                "culture, never ask for a job or referral directly. Return only the message text, no subject line."
+            )
+            try:
+                resp = await self.client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=300,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                self._total_tokens += resp.usage.input_tokens + resp.usage.output_tokens
+                contact.outreach_message = resp.content[0].text.strip()
+            except Exception as exc:
+                logger.warning("Outreach draft failed for contact %s: %s", contact.id, exc)
+
+        await self.db.commit()
+
+    async def _save_contacts(self, contacts: list[dict]) -> tuple[int, list[Contact]]:
         saved = 0
+        new_contacts: list[Contact] = []
         for item in contacts:
             if not await quota.can_surface_contact(self.db, self.user_id):
                 break
@@ -286,7 +317,7 @@ class NetworkingAgent(BaseAgent):
                 if existing.scalar_one_or_none():
                     continue
 
-            self.db.add(Contact(
+            contact = Contact(
                 user_id=self.user_id,
                 company=item.get("company", ""),
                 first_name=item.get("first_name", ""),
@@ -299,11 +330,13 @@ class NetworkingAgent(BaseAgent):
                 relevance_score=float(item.get("relevance_score", 0)),
                 relevance_reasoning=item.get("relevance_reasoning"),
                 outreach_message=None,
-            ))
+            )
+            self.db.add(contact)
             await self.db.flush()
             await quota.increment_contacts_surfaced(self.db, self.user_id)
+            new_contacts.append(contact)
             saved += 1
 
         await self.db.commit()
         self._contacts_saved = saved
-        return saved
+        return saved, new_contacts

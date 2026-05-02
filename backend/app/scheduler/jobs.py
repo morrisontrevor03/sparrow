@@ -146,7 +146,7 @@ def register_jobs():
     )
     scheduler.add_job(
         run_networking_for_all_users,
-        CronTrigger(day_of_week="mon", hour=9, minute=0),
+        CronTrigger(day_of_week="sun,wed", hour=9, minute=0, timezone="UTC"),
         id="networking_global",
         replace_existing=True,
         misfire_grace_time=600,
