@@ -79,6 +79,34 @@ async def trigger_application_agent(
     return {"ok": True, "message": "Application Agent started"}
 
 
+@router.post("/test-email")
+async def test_email(current_user: User = Depends(get_current_user)):
+    """Send a test email to the current user and return the raw Resend response."""
+    if not settings.resend_api_key:
+        return {"ok": False, "error": "RESEND_API_KEY not configured"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {settings.resend_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": settings.resend_from_email,
+                "to": [current_user.email],
+                "subject": "ApplyNow email test",
+                "html": "<p>This is a test email from ApplyNow. If you see this, email delivery is working.</p>",
+            },
+        )
+    return {
+        "ok": resp.status_code in (200, 201),
+        "status_code": resp.status_code,
+        "resend_response": resp.json() if resp.content else {},
+        "from": settings.resend_from_email,
+        "to": current_user.email,
+    }
+
+
 @router.get("/test-exa")
 async def test_exa(current_user: User = Depends(get_current_user)):
     """Quick sanity-check: hits Exa neural search with a Stripe engineer query."""
