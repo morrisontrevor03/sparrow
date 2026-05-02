@@ -14,19 +14,32 @@ logger = logging.getLogger(__name__)
 
 TARGET_COMPANY_COUNT = 25
 JUNIOR_PREFIXES = ["Junior", "Associate", "Entry Level", "New Grad"]
+FOUNDER_TITLES = ["Founder", "Co-Founder"]
 EXA_SEARCH_URL = "https://api.exa.ai/search"
 
 EXCLUDE_KEYWORDS = {
     "vp", "vice president", "director", "chief", "ceo", "cto", "coo", "cfo",
     "founder", "owner", "partner", "head of",
 }
+FOUNDER_KEYWORDS = {"founder", "co-founder", "cofounder"}
 RECRUITER_KEYWORDS = {"recruiter", "talent", "sourcer", "recruiting", "staffing"}
 JUNIOR_KEYWORDS = {"junior", "associate", "entry level", "new grad", "early career"}
 MANAGER_KEYWORDS = {"manager", "lead", "principal", "staff"}
 
 
+def _is_yc_company(company: str) -> bool:
+    return "(yc " in company.lower()
+
+
+def _clean_company_name(company: str) -> str:
+    """Strip batch tags like '(YC S26)' so they don't appear in Exa search queries."""
+    import re
+    return re.sub(r"\s*\([^)]*\)\s*$", "", company).strip()
+
+
 def _companies_match(target: str, found: str) -> bool:
-    t = target.lower().strip()
+    # Compare against the clean name so '(YC S26)' doesn't break matching.
+    t = _clean_company_name(target).lower().strip()
     f = found.lower().strip()
     return t in f or f in t
 
@@ -113,6 +126,12 @@ class NetworkingAgent(BaseAgent):
                 if titles:
                     results = await self._exa_search(target_company, titles, max_results=10)
                     contacts.extend(results)
+            # For YC startups, also target founders — they're the direct hiring decision-makers
+            if _is_yc_company(target_company):
+                results = await self._exa_search(
+                    target_company, FOUNDER_TITLES, max_results=5, allow_founders=True
+                )
+                contacts.extend(results)
 
         logger.info("Networking: %d raw profiles collected", len(contacts))
 
@@ -120,14 +139,14 @@ class NetworkingAgent(BaseAgent):
         return {"summary": f"Saved {saved} new contacts", "contacts_found": saved}
 
     async def _exa_search(
-        self, company: str, titles: list[str], max_results: int
+        self, company: str, titles: list[str], max_results: int, allow_founders: bool = False
     ) -> list[dict]:
-        # Build a focused natural-language query for Exa's neural search.
-        # Using 2 titles max keeps the query tight; neural search generalises from there.
+        # Strip batch tags (e.g. "(YC S26)") so they don't pollute the query.
+        query_company = _clean_company_name(company)
         if len(titles) >= 2:
-            query = f"{titles[0]} or {titles[1]} at {company}"
+            query = f"{titles[0]} or {titles[1]} at {query_company}"
         else:
-            query = f"{titles[0]} at {company}"
+            query = f"{titles[0]} at {query_company}"
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -203,7 +222,10 @@ class NetworkingAgent(BaseAgent):
 
             score = _score_title(job_title)
             if score == 0.0:
-                continue
+                if allow_founders and any(k in job_title.lower() for k in FOUNDER_KEYWORDS):
+                    score = 0.9
+                else:
+                    continue
 
             name_parts = name.split()
             people.append({
@@ -223,6 +245,8 @@ class NetworkingAgent(BaseAgent):
 
     def _reasoning(self, title: str) -> str:
         t = title.lower()
+        if any(k in t for k in FOUNDER_KEYWORDS):
+            return "Founder — direct hiring decision-maker at this startup"
         if any(k in t for k in RECRUITER_KEYWORDS):
             return "Recruiter — not a primary networking target"
         if any(k in t for k in JUNIOR_KEYWORDS):
