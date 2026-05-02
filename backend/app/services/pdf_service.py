@@ -1,13 +1,11 @@
 from io import BytesIO
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     HRFlowable,
-    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -31,14 +29,7 @@ def _rule():
     return HRFlowable(width="100%", thickness=0.4, color=colors.HexColor("#DDDDDD"), spaceAfter=10)
 
 
-def generate_application_pdf(
-    name: str,
-    email: str,
-    job_title: str,
-    company: str,
-    cover_letter: str,
-    tailored_resume: dict,
-) -> bytes:
+def _build(story: list) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -48,10 +39,20 @@ def generate_application_pdf(
         topMargin=inch,
         bottomMargin=inch,
     )
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def generate_cover_letter_pdf(
+    name: str,
+    email: str,
+    job_title: str,
+    company: str,
+    cover_letter: str,
+) -> bytes:
     s = _styles()
     story = []
 
-    # ── Cover Letter ──────────────────────────────────────────────
     story.append(Paragraph(name or "Applicant", s["name"]))
     story.append(Paragraph(email or "", s["contact"]))
     story.append(_rule())
@@ -64,9 +65,17 @@ def generate_application_pdf(
         if para:
             story.append(Paragraph(para, s["body"]))
 
-    story.append(PageBreak())
+    return _build(story)
 
-    # ── Tailored Resume ───────────────────────────────────────────
+
+def generate_resume_pdf(
+    name: str,
+    email: str,
+    tailored_resume: dict,
+) -> bytes:
+    s = _styles()
+    story = []
+
     story.append(Paragraph(name or "Applicant", s["name"]))
     story.append(Paragraph(email or "", s["contact"]))
     story.append(_rule())
@@ -103,5 +112,4 @@ def generate_application_pdf(
                 line += f" ({edu['year']})"
             story.append(Paragraph(line, s["body"]))
 
-    doc.build(story)
-    return buffer.getvalue()
+    return _build(story)

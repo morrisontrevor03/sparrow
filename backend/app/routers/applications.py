@@ -12,7 +12,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.application import Application
 from app.models.user import User
-from app.services.pdf_service import generate_application_pdf
+from app.services.pdf_service import generate_cover_letter_pdf, generate_resume_pdf
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -82,35 +82,60 @@ async def generate_application(
     return _serialize_application(app)
 
 
-@router.get("/{application_id}/pdf")
-async def download_application_pdf(
-    application_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def _load_app_for_pdf(application_id: uuid.UUID, user_id, db):
     result = await db.execute(
         select(Application)
         .options(selectinload(Application.job))
-        .where(Application.id == application_id, Application.user_id == current_user.id)
+        .where(Application.id == application_id, Application.user_id == user_id)
     )
     app = result.scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
     if not app.tailored_resume or not app.cover_letter:
         raise HTTPException(status_code=400, detail="Draft is not ready yet")
+    return app
 
-    pdf_bytes = generate_application_pdf(
+
+def _safe_company(app) -> str:
+    raw = app.job.company if app.job else "company"
+    return "".join(c for c in raw if c.isalnum() or c in " _-").strip().replace(" ", "_")
+
+
+@router.get("/{application_id}/cover-letter/pdf")
+async def download_cover_letter_pdf(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    app = await _load_app_for_pdf(application_id, current_user.id, db)
+    pdf_bytes = generate_cover_letter_pdf(
         name=current_user.full_name or current_user.email,
         email=current_user.email,
         job_title=app.job.title if app.job else "Position",
         company=app.job.company if app.job else "",
         cover_letter=app.cover_letter,
-        tailored_resume=app.tailored_resume,
+    )
+    filename = f"cover_letter_{_safe_company(app)}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
-    safe_company = "".join(c for c in (app.job.company if app.job else "company") if c.isalnum() or c in " _-").strip()
-    filename = f"application_{safe_company}.pdf".replace(" ", "_")
 
+@router.get("/{application_id}/resume/pdf")
+async def download_resume_pdf(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    app = await _load_app_for_pdf(application_id, current_user.id, db)
+    pdf_bytes = generate_resume_pdf(
+        name=current_user.full_name or current_user.email,
+        email=current_user.email,
+        tailored_resume=app.tailored_resume,
+    )
+    filename = f"resume_{_safe_company(app)}.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",

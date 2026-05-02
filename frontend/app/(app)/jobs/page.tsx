@@ -19,12 +19,15 @@ function MatchBadge({ score }: { score: number | null }) {
 function DraftButton({ job }: { job: Job }) {
   const qc = useQueryClient();
 
+  const slug = job.company.replace(/\s+/g, "_");
+
   const generateMutation = useMutation({
     mutationFn: () => applications.generate(job.id),
     onSuccess: async (data) => {
       qc.invalidateQueries({ queryKey: ["jobs"] });
       try {
-        await applications.downloadPdf(data.id, `application_${job.company.replace(/\s+/g, "_")}.pdf`);
+        await applications.downloadCoverLetterPdf(data.id, slug);
+        await applications.downloadResumePdf(data.id, slug);
       } catch {
         toast.error("Draft created but PDF download failed");
       }
@@ -33,10 +36,10 @@ function DraftButton({ job }: { job: Job }) {
   });
 
   const downloadMutation = useMutation({
-    mutationFn: () => applications.downloadPdf(
-      job.application_id!,
-      `application_${job.company.replace(/\s+/g, "_")}.pdf`,
-    ),
+    mutationFn: async () => {
+      await applications.downloadCoverLetterPdf(job.application_id!, slug);
+      await applications.downloadResumePdf(job.application_id!, slug);
+    },
     onError: (err: Error) => toast.error(err.message || "Download failed"),
   });
 
@@ -50,7 +53,7 @@ function DraftButton({ job }: { job: Job }) {
         {downloadMutation.isPending ? (
           <><Loader2 className="h-3 w-3 animate-spin" /> Downloading…</>
         ) : (
-          <><Download className="h-3 w-3" /> Download PDF</>
+          <><Download className="h-3 w-3" /> Download PDFs</>
         )}
       </button>
     );

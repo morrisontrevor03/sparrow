@@ -94,8 +94,10 @@ export const applications = {
   get: (id: string) => request<ApplicationDraft>(`/api/applications/${id}`),
   generate: (jobId: string) =>
     request<ApplicationDraft>(`/api/applications/generate/${jobId}`, { method: "POST" }),
-  downloadPdf: (id: string, filename: string) =>
-    downloadBlob(`/api/applications/${id}/pdf`, filename),
+  downloadCoverLetterPdf: (id: string, company: string) =>
+    downloadBlob(`/api/applications/${id}/cover-letter/pdf`, `cover_letter_${company}.pdf`),
+  downloadResumePdf: (id: string, company: string) =>
+    downloadBlob(`/api/applications/${id}/resume/pdf`, `resume_${company}.pdf`),
   updateCoverLetter: (id: string, cover_letter: string) =>
     request(`/api/applications/${id}/cover-letter`, {
       method: "PATCH",

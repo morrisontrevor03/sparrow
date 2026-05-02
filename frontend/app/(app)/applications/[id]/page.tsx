@@ -72,9 +72,16 @@ export default function ApplicationDetailPage({
     onError: () => toast.error("Failed to save"),
   });
 
-  const downloadPdf = useMutation({
-    mutationFn: () => applications.downloadPdf(id, `application_${app?.job?.company?.replace(/\s+/g, "_") ?? id}.pdf`),
-    onError: () => toast.error("PDF download failed"),
+  const slug = app?.job?.company?.replace(/\s+/g, "_") ?? id;
+
+  const downloadCoverLetter = useMutation({
+    mutationFn: () => applications.downloadCoverLetterPdf(id, slug),
+    onError: () => toast.error("Cover letter download failed"),
+  });
+
+  const downloadResume = useMutation({
+    mutationFn: () => applications.downloadResumePdf(id, slug),
+    onError: () => toast.error("Resume download failed"),
   });
 
   const copyToClipboard = (text: string, label: string) => {
@@ -113,14 +120,25 @@ export default function ApplicationDetailPage({
           </div>
         </div>
         <button
-          onClick={() => downloadPdf.mutate()}
-          disabled={downloadPdf.isPending}
+          onClick={() => downloadCoverLetter.mutate()}
+          disabled={downloadCoverLetter.isPending}
           className="inline-flex items-center gap-1.5 shrink-0 text-xs font-medium text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/8 disabled:opacity-50 disabled:cursor-wait rounded-lg px-3 py-1.5 transition-colors"
         >
-          {downloadPdf.isPending ? (
+          {downloadCoverLetter.isPending ? (
             <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Downloading…</>
           ) : (
-            <><Download className="h-3.5 w-3.5" /> Download PDF</>
+            <><Download className="h-3.5 w-3.5" /> Cover Letter</>
+          )}
+        </button>
+        <button
+          onClick={() => downloadResume.mutate()}
+          disabled={downloadResume.isPending}
+          className="inline-flex items-center gap-1.5 shrink-0 text-xs font-medium text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/8 disabled:opacity-50 disabled:cursor-wait rounded-lg px-3 py-1.5 transition-colors"
+        >
+          {downloadResume.isPending ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Downloading…</>
+          ) : (
+            <><Download className="h-3.5 w-3.5" /> Resume</>
           )}
         </button>
       </div>
