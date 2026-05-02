@@ -84,20 +84,6 @@ async def trigger_networking_single(
     return {"ok": True, "run_id": str(run_id), "message": f"Networking Agent started for {body.company}"}
 
 
-@router.post("/application/run")
-async def trigger_application_agent(
-    background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    if not await quota.can_run_agent(db, current_user.id, "application"):
-        raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited agent runs")
-    from app.agents.application import ApplicationAgent
-    run_id = await _pre_create_run(current_user.id, "application", "manual")
-    background_tasks.add_task(_run_agent, ApplicationAgent, current_user.id, "manual", run_id=run_id)
-    return {"ok": True, "run_id": str(run_id), "message": "Application Agent started"}
-
-
 @router.post("/test-email")
 async def test_email(current_user: User = Depends(get_current_user)):
     """Send a test email to the current user and return the raw Resend response."""

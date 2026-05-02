@@ -1,8 +1,9 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { jobs, Job } from "@/lib/api";
-import { ExternalLink, X, MapPin, DollarSign } from "lucide-react";
+import { jobs, applications, Job } from "@/lib/api";
+import { ExternalLink, X, MapPin, DollarSign, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 function MatchBadge({ score }: { score: number | null }) {
@@ -14,6 +15,43 @@ function MatchBadge({ score }: { score: number | null }) {
       <span className={`h-1.5 w-1.5 rounded-full ${pct >= 85 ? "bg-emerald-400" : pct >= 70 ? "bg-amber-400" : "bg-zinc-400"}`} />
       {pct}%
     </span>
+  );
+}
+
+function DraftButton({ job }: { job: Job }) {
+  const router = useRouter();
+  const qc = useQueryClient();
+
+  const generateMutation = useMutation({
+    mutationFn: () => applications.generate(job.id),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      router.push(`/applications/${data.id}`);
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to generate draft"),
+  });
+
+  if (job.application_id) {
+    return (
+      <Link
+        href={`/applications/${job.application_id}`}
+        className="text-xs font-medium text-white bg-white/8 hover:bg-white/12 rounded-lg px-3 py-1.5 transition-colors"
+      >
+        View Draft
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => generateMutation.mutate()}
+      disabled={generateMutation.isPending}
+      className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-white/8 hover:bg-white/12 disabled:opacity-60 disabled:cursor-wait rounded-lg px-3 py-1.5 transition-colors"
+    >
+      {generateMutation.isPending ? (
+        <><Loader2 className="h-3 w-3 animate-spin" /> Generating…</>
+      ) : "Generate Draft"}
+    </button>
   );
 }
 
@@ -61,12 +99,7 @@ function JobCard({ job, onDismiss }: { job: Job; onDismiss: (id: string) => void
       )}
 
       <div className="flex items-center gap-2 mt-1">
-        <Link
-          href={`/jobs/${job.id}`}
-          className="text-xs font-medium text-white bg-white/8 hover:bg-white/12 rounded-lg px-3 py-1.5 transition-colors"
-        >
-          View Draft
-        </Link>
+        <DraftButton job={job} />
         <a
           href={job.url}
           target="_blank"
@@ -106,7 +139,7 @@ export default function JobsPage() {
 
       {data.length === 0 ? (
         <div className="rounded-xl border border-white/8 bg-white/3 p-12 text-center grid-bg">
-          <p className="text-zinc-400 text-sm">No jobs yet. The Job Scout agent runs every 30 minutes.</p>
+          <p className="text-zinc-400 text-sm">No jobs yet. The Job Scout agent runs every 4 hours.</p>
           <p className="text-zinc-500 text-xs mt-2">You can trigger it manually from the Dashboard.</p>
         </div>
       ) : (

@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.models.application import Application
 from app.models.job import Job
 from app.models.user import User
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -51,6 +53,7 @@ async def list_jobs(
 ):
     query = (
         select(Job)
+        .options(selectinload(Job.application))
         .where(Job.user_id == current_user.id, Job.is_dismissed == False)
         .order_by(desc(Job.match_score), desc(Job.discovered_at))
         .offset((page - 1) * page_size)
@@ -74,7 +77,11 @@ async def get_job(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == current_user.id))
+    result = await db.execute(
+        select(Job)
+        .options(selectinload(Job.application))
+        .where(Job.id == job_id, Job.user_id == current_user.id)
+    )
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -104,6 +111,7 @@ def _serialize_job(j: Job) -> dict:
         "is_new": j.is_new,
         "is_dismissed": j.is_dismissed,
         "discovered_at": j.discovered_at.isoformat() if j.discovered_at else None,
+        "application_id": str(j.application.id) if j.application else None,
     }
 
 

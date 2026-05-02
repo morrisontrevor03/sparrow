@@ -72,6 +72,8 @@ export const applications = {
     return request<ApplicationDraft[]>(`/api/applications${q}`);
   },
   get: (id: string) => request<ApplicationDraft>(`/api/applications/${id}`),
+  generate: (jobId: string) =>
+    request<ApplicationDraft>(`/api/applications/generate/${jobId}`, { method: "POST" }),
   updateCoverLetter: (id: string, cover_letter: string) =>
     request(`/api/applications/${id}/cover-letter`, {
       method: "PATCH",
@@ -128,7 +130,6 @@ export const agents = {
   runNetworking: () => request("/api/agents/networking/run", { method: "POST" }),
   runNetworkingForCompany: (company: string) =>
     request("/api/agents/networking/run-single", { method: "POST", body: JSON.stringify({ company }) }),
-  runApplication: () => request("/api/agents/application/run", { method: "POST" }),
   runs: () => request<AgentRun[]>("/api/agents/runs"),
 };
 
@@ -180,6 +181,7 @@ export interface Job {
   is_dismissed: boolean;
   discovered_at: string;
   source: string;
+  application_id: string | null;
 }
 
 export interface ApplicationDraft {
@@ -254,7 +256,6 @@ export interface Preferences {
   company_industries: string[];
   scout_enabled: boolean;
   networking_enabled: boolean;
-  application_agent_enabled: boolean;
 }
 
 export interface AgentRun {

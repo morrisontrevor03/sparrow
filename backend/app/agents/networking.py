@@ -210,7 +210,7 @@ class NetworkingAgent(BaseAgent):
 
         parts: list[str] = []
         if stages:
-            parts.append(f"funding stage: {', '.join(stages)}")
+            parts.append(f"most recent funding round is one of: {', '.join(stages)}")
         if industries:
             parts.append(f"industries: {', '.join(industries)}")
 
@@ -219,6 +219,8 @@ class NetworkingAgent(BaseAgent):
         prompt = (
             f"List exactly {MAX_DISCOVERED_COMPANIES} real, currently-active technology companies "
             f"matching ALL of: {'; '.join(parts)}.\n\n"
+            "IMPORTANT: Use only the company's LATEST/MOST RECENT funding round — not any historical round. "
+            "For example, OpenAI must NOT be included for 'Series A' because its latest round is Series G. "
             "Rules: one company name per line, no numbering, no extra text, official trading name only "
             "(e.g. 'Stripe' not 'Stripe Inc.'). If fewer real companies match, return as many as you can."
         )

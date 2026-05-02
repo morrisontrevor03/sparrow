@@ -56,6 +56,29 @@ async def get_application(
     return _serialize_application(app)
 
 
+@router.post("/generate/{job_id}")
+async def generate_application(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.agents.application import ApplicationAgent
+
+    agent = ApplicationAgent(db, current_user.id)
+    try:
+        app = await agent.generate_for_job(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    result = await db.execute(
+        select(Application)
+        .options(selectinload(Application.job), selectinload(Application.resume))
+        .where(Application.id == app.id)
+    )
+    app = result.scalar_one()
+    return _serialize_application(app)
+
+
 @router.patch("/{application_id}/cover-letter")
 async def update_cover_letter(
     application_id: uuid.UUID,

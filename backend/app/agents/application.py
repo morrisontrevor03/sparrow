@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -89,6 +90,80 @@ Instructions:
 
         apps_created = getattr(self, "_apps_created", 0)
         return {"summary": f"Created {apps_created} application drafts", "applications_created": apps_created}
+
+    async def generate_for_job(self, job_id: uuid.UUID) -> Application:
+        """Single-shot draft generation triggered on demand for one job."""
+        existing = await self.db.execute(
+            select(Application).where(Application.job_id == job_id, Application.user_id == self.user_id)
+        )
+        if app := existing.scalar_one_or_none():
+            return app
+
+        job_result = await self.db.execute(
+            select(Job).where(Job.id == job_id, Job.user_id == self.user_id)
+        )
+        job = job_result.scalar_one_or_none()
+        if not job:
+            raise ValueError("Job not found")
+
+        resume_result = await self.db.execute(
+            select(Resume).where(Resume.user_id == self.user_id, Resume.is_active == True)
+        )
+        resume = resume_result.scalar_one_or_none()
+        if not resume or not resume.structured_data:
+            raise ValueError("No parsed resume found — please upload a resume first")
+
+        prompt = (
+            "You are an expert job application writer.\n\n"
+            f"User's resume (structured JSON):\n{json.dumps(resume.structured_data, indent=2)}\n\n"
+            f"Job:\nTitle: {job.title}\nCompany: {job.company}\n"
+            f"Location: {job.location or 'Not specified'}\n"
+            f"Description:\n{(job.description or '')[:3000]}\n\n"
+            "Instructions:\n"
+            "1. Tailor the resume: rewrite 2–4 experience bullets to match JD keywords. Keep changes authentic.\n"
+            "2. Write a 3-paragraph cover letter:\n"
+            "   - Para 1: Hook — why this company/role excites the candidate\n"
+            "   - Para 2: 2–3 concrete experiences mapping to job requirements\n"
+            "   - Para 3: Brief closing, enthusiasm, call to action\n"
+            "3. Note what was changed and why.\n\n"
+            "Respond with ONLY valid JSON (no markdown fences):\n"
+            '{"tailored_resume": {...}, "cover_letter": "...", "tailoring_notes": "..."}'
+        )
+
+        raw = await self.complete(prompt, model=self.model, max_tokens=4000)
+        raw = re.sub(r"^```(?:json)?\s*", "", raw.strip())
+        raw = re.sub(r"\s*```$", "", raw)
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            logger.error("Failed to parse draft JSON for job %s: %s\nRaw: %.500s", job_id, exc, raw)
+            raise ValueError("Failed to generate draft — please try again") from exc
+
+        tailored_resume = data.get("tailored_resume")
+        cover_letter = (data.get("cover_letter") or "").strip()
+        quality_ok = tailored_resume and isinstance(tailored_resume, dict) and len(cover_letter) >= 50
+
+        application = Application(
+            user_id=self.user_id,
+            job_id=job_id,
+            resume_id=resume.id,
+            status="ready" if quality_ok else "draft",
+            tailored_resume=tailored_resume,
+            cover_letter=cover_letter or None,
+            tailoring_notes=data.get("tailoring_notes"),
+        )
+        self.db.add(application)
+        await self.db.flush()
+        await self.db.commit()
+
+        user_result = await self.db.execute(select(User).where(User.id == self.user_id))
+        user = user_result.scalar_one_or_none()
+        if user:
+            html = draft_ready_email(job.title, job.company, str(application.id), settings.frontend_url)
+            await send_email(user.email, f"Draft ready: {job.title} at {job.company}", html)
+
+        return application
 
     async def dispatch_tool(self, name: str, input_data: dict) -> Any:
         if name == "get_unprocessed_jobs":

@@ -296,23 +296,16 @@ export default function SettingsPage() {
         <h2 className="text-sm font-medium">Agent Settings</h2>
         <Toggle
           label="Job Scout"
-          description="Searches for new jobs every 30 minutes"
+          description="Searches for new jobs every 4 hours"
           checked={form.scout_enabled ?? true}
           onChange={(v) => update({ scout_enabled: v })}
         />
         <Divider />
         <Toggle
           label="Networking Agent"
-          description="Finds contacts at your target companies twice daily"
+          description="Finds contacts at your target companies on Wednesdays and Sundays"
           checked={form.networking_enabled ?? true}
           onChange={(v) => update({ networking_enabled: v })}
-        />
-        <Divider />
-        <Toggle
-          label="Application Agent"
-          description="Auto-drafts tailored resumes and cover letters"
-          checked={form.application_agent_enabled ?? true}
-          onChange={(v) => update({ application_agent_enabled: v })}
         />
       </div>
 

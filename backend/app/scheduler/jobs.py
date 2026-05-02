@@ -139,7 +139,7 @@ async def send_weekly_summaries():
 def register_jobs():
     scheduler.add_job(
         run_job_scout_for_all_users,
-        CronTrigger(minute="*/30"),
+        CronTrigger(hour="*/4", minute=0, timezone="UTC"),
         id="job_scout_global",
         replace_existing=True,
         misfire_grace_time=300,
@@ -150,13 +150,6 @@ def register_jobs():
         id="networking_global",
         replace_existing=True,
         misfire_grace_time=600,
-    )
-    scheduler.add_job(
-        run_application_agent_for_all_users,
-        CronTrigger(minute="*/30"),
-        id="application_global",
-        replace_existing=True,
-        misfire_grace_time=300,
     )
     scheduler.add_job(
         reset_monthly_usage,
