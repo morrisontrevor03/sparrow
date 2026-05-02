@@ -125,14 +125,14 @@ function ContactRow({
       </div>
 
       {/* Score */}
-      <div className="shrink-0 hidden md:block">
+      <div className="w-16 shrink-0 hidden md:block">
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${scoreColor(score)}`}>
           {Math.round(score * 100)}%
         </span>
       </div>
 
       {/* Status pill */}
-      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+      <div className="w-28 shrink-0" onClick={(e) => e.stopPropagation()}>
         <select
           value={contact.outreach_status}
           onChange={(e) => update.mutate({ outreach_status: e.target.value })}

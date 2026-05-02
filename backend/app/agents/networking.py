@@ -224,7 +224,18 @@ class NetworkingAgent(BaseAgent):
         )
         text = await self.complete(prompt, model=DISCOVERY_MODEL, max_tokens=400)
         lines = text.splitlines()
-        companies = [l.strip() for l in lines if l.strip()][:MAX_DISCOVERED_COMPANIES]
+        companies = []
+        for l in lines:
+            name = l.strip()
+            if not name:
+                continue
+            # Strip leading "1. " / "1) " / "- " that Claude adds despite instructions
+            import re as _re
+            name = _re.sub(r"^[\d]+[.)]\s*", "", name)
+            name = _re.sub(r"^[-•]\s*", "", name)
+            if name:
+                companies.append(name)
+        companies = companies[:MAX_DISCOVERED_COMPANIES]
         logger.info("Discovered %d companies", len(companies))
         return companies
 
