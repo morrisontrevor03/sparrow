@@ -23,6 +23,8 @@ def _validate_env() -> None:
         (errors if settings.environment == "production" else warnings).append("ANTHROPIC_API_KEY")
     if not settings.exa_api_key:
         warnings.append("EXA_API_KEY (networking agent will not work)")
+    if not settings.resend_api_key:
+        warnings.append("RESEND_API_KEY (email sending will not work)")
 
     if settings.environment == "production":
         if settings.secret_key == "dev-secret-key-change-in-production":
