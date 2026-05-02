@@ -81,7 +81,13 @@ def _cors_origins() -> list[str]:
     url = settings.frontend_url.rstrip("/")
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
-    return [url]
+    # Always allow both www and non-www so either subdomain works
+    if "://www." in url:
+        bare = url.replace("://www.", "://", 1)
+        return [url, bare]
+    else:
+        www = url.replace("://", "://www.", 1)
+        return [url, www]
 
 app.add_middleware(
     CORSMiddleware,
