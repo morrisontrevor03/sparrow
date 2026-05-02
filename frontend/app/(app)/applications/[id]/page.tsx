@@ -3,7 +3,7 @@ import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { applications, resume as resumeApi } from "@/lib/api";
-import { Copy, Download, ExternalLink, ChevronLeft } from "lucide-react";
+import { Copy, Download, ExternalLink, ChevronLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 // Simple diff highlight: shows which bullets changed vs original
@@ -72,6 +72,11 @@ export default function ApplicationDetailPage({
     onError: () => toast.error("Failed to save"),
   });
 
+  const downloadPdf = useMutation({
+    mutationFn: () => applications.downloadPdf(id, `application_${app?.job?.company?.replace(/\s+/g, "_") ?? id}.pdf`),
+    onError: () => toast.error("PDF download failed"),
+  });
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(() => toast.success(`${label} copied`));
   };
@@ -107,6 +112,17 @@ export default function ApplicationDetailPage({
             )}
           </div>
         </div>
+        <button
+          onClick={() => downloadPdf.mutate()}
+          disabled={downloadPdf.isPending}
+          className="inline-flex items-center gap-1.5 shrink-0 text-xs font-medium text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/8 disabled:opacity-50 disabled:cursor-wait rounded-lg px-3 py-1.5 transition-colors"
+        >
+          {downloadPdf.isPending ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Downloading…</>
+          ) : (
+            <><Download className="h-3.5 w-3.5" /> Download PDF</>
+          )}
+        </button>
       </div>
 
       {/* Tailoring notes */}

@@ -5,6 +5,26 @@ function getToken(): string | null {
   return localStorage.getItem("token");
 }
 
+async function downloadBlob(path: string, filename: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+  if (res.status === 401) { localStorage.removeItem("token"); window.location.href = "/login"; throw new Error("Unauthorized"); }
+  if (!res.ok) { const err = await res.json().catch(() => ({ detail: res.statusText })); throw new Error(err.detail || "Download failed"); }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -74,6 +94,8 @@ export const applications = {
   get: (id: string) => request<ApplicationDraft>(`/api/applications/${id}`),
   generate: (jobId: string) =>
     request<ApplicationDraft>(`/api/applications/generate/${jobId}`, { method: "POST" }),
+  downloadPdf: (id: string, filename: string) =>
+    downloadBlob(`/api/applications/${id}/pdf`, filename),
   updateCoverLetter: (id: string, cover_letter: string) =>
     request(`/api/applications/${id}/cover-letter`, {
       method: "PATCH",

@@ -1,6 +1,8 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from io import BytesIO
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +12,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.application import Application
 from app.models.user import User
+from app.services.pdf_service import generate_application_pdf
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -77,6 +80,42 @@ async def generate_application(
     )
     app = result.scalar_one()
     return _serialize_application(app)
+
+
+@router.get("/{application_id}/pdf")
+async def download_application_pdf(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Application)
+        .options(selectinload(Application.job))
+        .where(Application.id == application_id, Application.user_id == current_user.id)
+    )
+    app = result.scalar_one_or_none()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if not app.tailored_resume or not app.cover_letter:
+        raise HTTPException(status_code=400, detail="Draft is not ready yet")
+
+    pdf_bytes = generate_application_pdf(
+        name=current_user.full_name or current_user.email,
+        email=current_user.email,
+        job_title=app.job.title if app.job else "Position",
+        company=app.job.company if app.job else "",
+        cover_letter=app.cover_letter,
+        tailored_resume=app.tailored_resume,
+    )
+
+    safe_company = "".join(c for c in (app.job.company if app.job else "company") if c.isalnum() or c in " _-").strip()
+    filename = f"application_{safe_company}.pdf".replace(" ", "_")
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/{application_id}/cover-letter")

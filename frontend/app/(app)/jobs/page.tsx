@@ -1,10 +1,8 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { jobs, applications, Job } from "@/lib/api";
-import { ExternalLink, X, MapPin, DollarSign, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { ExternalLink, X, MapPin, DollarSign, Loader2, Download } from "lucide-react";
 
 function MatchBadge({ score }: { score: number | null }) {
   if (score === null) return null;
@@ -19,26 +17,42 @@ function MatchBadge({ score }: { score: number | null }) {
 }
 
 function DraftButton({ job }: { job: Job }) {
-  const router = useRouter();
   const qc = useQueryClient();
 
   const generateMutation = useMutation({
     mutationFn: () => applications.generate(job.id),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       qc.invalidateQueries({ queryKey: ["jobs"] });
-      router.push(`/applications/${data.id}`);
+      try {
+        await applications.downloadPdf(data.id, `application_${job.company.replace(/\s+/g, "_")}.pdf`);
+      } catch {
+        toast.error("Draft created but PDF download failed");
+      }
     },
-    onError: (err: Error) => toast.error(err.message || "Failed to generate draft"),
+    onError: (err: Error) => toast.error(err.message || "Failed to tailor application"),
+  });
+
+  const downloadMutation = useMutation({
+    mutationFn: () => applications.downloadPdf(
+      job.application_id!,
+      `application_${job.company.replace(/\s+/g, "_")}.pdf`,
+    ),
+    onError: (err: Error) => toast.error(err.message || "Download failed"),
   });
 
   if (job.application_id) {
     return (
-      <Link
-        href={`/applications/${job.application_id}`}
-        className="text-xs font-medium text-white bg-white/8 hover:bg-white/12 rounded-lg px-3 py-1.5 transition-colors"
+      <button
+        onClick={() => downloadMutation.mutate()}
+        disabled={downloadMutation.isPending}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-white/8 hover:bg-white/12 disabled:opacity-60 disabled:cursor-wait rounded-lg px-3 py-1.5 transition-colors"
       >
-        View Draft
-      </Link>
+        {downloadMutation.isPending ? (
+          <><Loader2 className="h-3 w-3 animate-spin" /> Downloading…</>
+        ) : (
+          <><Download className="h-3 w-3" /> Download PDF</>
+        )}
+      </button>
     );
   }
 
@@ -49,8 +63,8 @@ function DraftButton({ job }: { job: Job }) {
       className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-white/8 hover:bg-white/12 disabled:opacity-60 disabled:cursor-wait rounded-lg px-3 py-1.5 transition-colors"
     >
       {generateMutation.isPending ? (
-        <><Loader2 className="h-3 w-3 animate-spin" /> Generating…</>
-      ) : "Generate Draft"}
+        <><Loader2 className="h-3 w-3 animate-spin" /> Tailoring…</>
+      ) : "Tailor Application"}
     </button>
   );
 }
