@@ -32,9 +32,24 @@ def _is_yc_company(company: str) -> bool:
 
 
 def _clean_company_name(company: str) -> str:
-    """Strip batch tags like '(YC S26)' so they don't appear in Exa search queries."""
+    """Strip any trailing parenthetical (e.g. '(YC S26)') for company matching."""
     import re
     return re.sub(r"\s*\([^)]*\)\s*$", "", company).strip()
+
+
+def _query_company_name(company: str) -> str:
+    """Format a company name for Exa search queries.
+
+    YC companies keep their batch tag (parens removed) so the query is
+    anchored to the right startup — 'Harbor YC S26' not just 'Harbor'.
+    Other companies have any trailing parenthetical stripped.
+    """
+    import re
+    m = re.search(r"\(YC ([^)]+)\)", company, re.IGNORECASE)
+    if m:
+        base = _clean_company_name(company)
+        return f"{base} YC {m.group(1)}"
+    return _clean_company_name(company)
 
 
 def _companies_match(target: str, found: str) -> bool:
@@ -141,8 +156,7 @@ class NetworkingAgent(BaseAgent):
     async def _exa_search(
         self, company: str, titles: list[str], max_results: int, allow_founders: bool = False
     ) -> list[dict]:
-        # Strip batch tags (e.g. "(YC S26)") so they don't pollute the query.
-        query_company = _clean_company_name(company)
+        query_company = _query_company_name(company)
         if len(titles) >= 2:
             query = f"{titles[0]} or {titles[1]} at {query_company}"
         else:
