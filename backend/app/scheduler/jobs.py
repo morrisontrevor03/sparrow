@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import func, select
 
 from app.config import settings
@@ -87,6 +88,78 @@ async def reset_monthly_usage():
     logger.info("Monthly usage reset complete")
 
 
+async def send_activation_emails():
+    """
+    Two checks per hour:
+    - Signed up > 1h ago, verified, no resume → send "Finish setup" (once)
+    - Has resume, no contacts/networking runs → send "First outreach ready" (once)
+    """
+    from app.models.resume import Resume
+    from app.models.contact import Contact
+    from app.models.agent_run import AgentRun
+    from app.services.email_service import send_email, finish_setup_email, first_outreach_ready_email
+
+    cutoff_1h = datetime.now(timezone.utc) - timedelta(hours=1)
+    cutoff_2h = datetime.now(timezone.utc) - timedelta(hours=2)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(User).where(User.is_active == True, User.is_verified == True)
+        )
+        users = result.scalars().all()
+
+    for user in users:
+        try:
+            async with AsyncSessionLocal() as db:
+                resume_result = await db.execute(
+                    select(Resume.id).where(Resume.user_id == user.id).limit(1)
+                )
+                has_resume = resume_result.scalar_one_or_none() is not None
+
+                # Check 1: no resume after 1 hour
+                if (
+                    not has_resume
+                    and not user.finish_setup_email_sent
+                    and user.created_at.replace(tzinfo=timezone.utc) < cutoff_1h
+                ):
+                    html = finish_setup_email(settings.frontend_url)
+                    sent = await send_email(user.email, "Finish your ApplyNow setup", html)
+                    if sent:
+                        user.finish_setup_email_sent = True
+                        db.add(user)
+                        await db.commit()
+                    continue
+
+                # Check 2: has resume but no outreach after 2 hours
+                if (
+                    has_resume
+                    and not user.first_outreach_email_sent
+                    and user.created_at.replace(tzinfo=timezone.utc) < cutoff_2h
+                ):
+                    contacts_result = await db.execute(
+                        select(Contact.id).where(Contact.user_id == user.id).limit(1)
+                    )
+                    has_contacts = contacts_result.scalar_one_or_none() is not None
+
+                    runs_result = await db.execute(
+                        select(AgentRun.id).where(
+                            AgentRun.user_id == user.id,
+                            AgentRun.agent_type == "networking",
+                        ).limit(1)
+                    )
+                    has_networking_run = runs_result.scalar_one_or_none() is not None
+
+                    if not has_contacts and not has_networking_run:
+                        html = first_outreach_ready_email(settings.frontend_url)
+                        sent = await send_email(user.email, "Your first outreach is ready", html)
+                        if sent:
+                            user.first_outreach_email_sent = True
+                            db.add(user)
+                            await db.commit()
+        except Exception:
+            logger.exception("Activation email check failed for user %s", user.id)
+
+
 async def send_weekly_summaries():
     from app.models.agent_run import AgentRun
     from app.services.email_service import send_email, weekly_summary_email
@@ -163,5 +236,12 @@ def register_jobs():
         id="weekly_summary",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+    scheduler.add_job(
+        send_activation_emails,
+        IntervalTrigger(minutes=60),
+        id="activation_emails",
+        replace_existing=True,
+        misfire_grace_time=300,
     )
     logger.info("APScheduler jobs registered")

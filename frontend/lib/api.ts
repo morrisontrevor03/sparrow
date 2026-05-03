@@ -173,6 +173,9 @@ export interface DashboardStats {
   contacts_count: number;
   plan: "free" | "pro";
   target_roles_configured: boolean;
+  resume_uploaded: boolean;
+  companies_configured: boolean;
+  first_run_completed: boolean;
   usage: {
     jobs_surfaced: number;
     contacts_surfaced: number;

@@ -142,6 +142,41 @@ def new_jobs_digest_email(jobs: list[dict], frontend_url: str) -> str:
     return _base_wrapper("#22c55e", "New jobs found", heading, body)
 
 
+def finish_setup_email(frontend_url: str) -> str:
+    onboarding_url = f"{frontend_url}/onboarding"
+    body = f"""
+      <p style="color: #d4d4d8; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">
+        You signed up for ApplyNow but haven't uploaded your resume yet.
+        That's the one thing your agents need to start finding jobs and contacts for you.
+      </p>
+      <p style="color: #d4d4d8; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
+        It takes 2 minutes to finish setup — upload your resume, set your target role and location,
+        and we'll run your first search right away.
+      </p>
+      <a href="{onboarding_url}" style="background: #fff; color: #09090b; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;">Finish setup →</a>
+    """
+    return _base_wrapper("#f59e0b", "Action needed", "Finish your ApplyNow setup", body)
+
+
+def first_outreach_ready_email(frontend_url: str) -> str:
+    networking_url = f"{frontend_url}/networking"
+    body = f"""
+      <p style="color: #d4d4d8; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">
+        Your resume is set up and your preferences are saved.
+        ApplyNow is ready to find warm contacts at your target companies and draft your first outreach messages.
+      </p>
+      <p style="color: #d4d4d8; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
+        Run the Networking Agent to get your first list of people to connect with — complete with
+        personalized message drafts you can send directly from the app.
+      </p>
+      <a href="{networking_url}" style="background: #fff; color: #09090b; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;">View your first outreach →</a>
+      <p style="color: #71717a; font-size: 12px; margin-top: 20px;">
+        Nothing goes out automatically — you review and send every message yourself.
+      </p>
+    """
+    return _base_wrapper("#3b82f6", "Your network is ready", "Your first outreach is ready to send", body)
+
+
 def weekly_summary_email(
     name: str | None,
     jobs_found: int,

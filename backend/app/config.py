@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
 
+    # Analytics
+    posthog_api_key: str = ""
+
     # App
     backend_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:3000"

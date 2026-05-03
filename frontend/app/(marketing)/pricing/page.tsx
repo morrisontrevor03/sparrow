@@ -3,27 +3,47 @@ import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { stripe } from "@/lib/api";
-import { Check, Zap } from "lucide-react";
+import { Check, Zap, Heart, Eye, Shield } from "lucide-react";
+import { track } from "@/lib/posthog";
 
 const FREE_FEATURES = [
   "3 Job Scout runs / month",
   "3 Networking runs / month",
-  "3 Application Draft runs / month",
+  "3 Application drafts / month",
   "Email alerts for high-match jobs",
 ];
 
 const PRO_FEATURES = [
   "Unlimited Job Scout runs",
   "Unlimited Networking runs",
-  "Unlimited Application Draft runs",
+  "Unlimited Application drafts",
   "Email alerts for high-match jobs",
   "Priority agent processing",
+];
+
+const PROMISES = [
+  {
+    icon: Heart,
+    title: "Relationship-first networking",
+    body: "We find the right people at your target companies and draft warm, personalized outreach — not cold spam.",
+  },
+  {
+    icon: Eye,
+    title: "You review everything",
+    body: "Every resume, cover letter, and message is drafted for you to read, edit, and send yourself. Nothing goes out without your approval.",
+  },
+  {
+    icon: Shield,
+    title: "No auto-applying. Ever.",
+    body: "We believe applying is a human act. ApplyNow prepares you to apply faster and smarter — you pull the trigger.",
+  },
 ];
 
 export default function PricingPage() {
   const [loading, setLoading] = useState(false);
 
   const handleUpgrade = async () => {
+    track("checkout_started", { source: "pricing_page" });
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!token) {
       window.location.href = "/register";
@@ -60,13 +80,25 @@ export default function PricingPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-6 py-24">
-        <div className="text-center mb-14">
+      <div className="mx-auto max-w-3xl px-6 py-20">
+        {/* Hero */}
+        <div className="text-center mb-6">
           <h1 className="text-3xl font-bold mb-3">Simple, honest pricing</h1>
-          <p className="text-zinc-400">Start free. Upgrade when the agents prove their worth.</p>
+          <p className="text-zinc-400 max-w-md mx-auto">
+            Start free. Upgrade when the agents prove their worth.
+          </p>
         </div>
 
-        <div className="grid gap-5 sm:grid-cols-2">
+        {/* Promise banner */}
+        <div className="mb-14 rounded-2xl border border-white/8 bg-white/3 px-6 py-5 text-center">
+          <p className="text-sm text-zinc-300 leading-relaxed">
+            <span className="font-semibold text-white">No auto-applying. You review everything.</span>
+            {" "}ApplyNow is a relationship-first platform — we draft, you decide.
+          </p>
+        </div>
+
+        {/* Plans */}
+        <div className="grid gap-5 sm:grid-cols-2 mb-20">
           {/* Free */}
           <div className="rounded-2xl border border-white/8 bg-white/3 p-7 flex flex-col">
             <div className="mb-6">
@@ -84,6 +116,7 @@ export default function PricingPage() {
             </ul>
             <Link
               href="/register"
+              onClick={() => track("paywall_viewed", { source: "pricing_free_cta" })}
               className="block text-center rounded-xl border border-white/10 px-5 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-white/5 transition-colors"
             >
               Get started free
@@ -118,6 +151,22 @@ export default function PricingPage() {
             >
               {loading ? "Redirecting…" : "Upgrade to Pro →"}
             </button>
+          </div>
+        </div>
+
+        {/* Promises */}
+        <div className="space-y-4">
+          <h2 className="text-center text-sm font-medium text-zinc-500 mb-6">Our commitments to you</h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {PROMISES.map(({ icon: Icon, title, body }) => (
+              <div key={title} className="rounded-xl border border-white/8 bg-white/3 p-5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/8 mb-3">
+                  <Icon className="h-4 w-4 text-zinc-300" />
+                </div>
+                <p className="text-sm font-semibold text-zinc-100 mb-1.5">{title}</p>
+                <p className="text-xs text-zinc-500 leading-relaxed">{body}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

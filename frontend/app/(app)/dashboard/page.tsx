@@ -1,23 +1,18 @@
 "use client";
+import { Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { dashboard, agents, DashboardStats, AgentRun } from "@/lib/api";
-import { Briefcase, Users, FileText, Sparkles, Play, CheckCircle2, XCircle, Loader2, Clock, AlertTriangle } from "lucide-react";
+import {
+  Briefcase, Users, FileText, Sparkles, Play,
+  CheckCircle2, XCircle, Loader2, Clock, AlertTriangle,
+  Upload, Building2, Zap, Circle,
+} from "lucide-react";
+import Link from "next/link";
+import { track } from "@/lib/posthog";
 
-function ScoreRing({ value, limit }: { value: number; limit: number | null }) {
-  const pct = limit ? Math.min((value / limit) * 100, 100) : 0;
-  const isAtLimit = limit !== null && value >= limit;
-  return (
-    <div className="flex items-center gap-2">
-      <span className={`text-sm font-medium ${isAtLimit ? "text-amber-400" : "text-zinc-300"}`}>
-        {value}{limit !== null ? ` / ${limit}` : ""}
-      </span>
-      {isAtLimit && (
-        <span className="text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">Limit reached</span>
-      )}
-    </div>
-  );
-}
+// ── Sub-components ─────────────────────────────────────────────────────────
 
 function StatCard({ label, value, icon: Icon, sub }: { label: string; value: number | string; icon: React.ElementType; sub?: string }) {
   return (
@@ -80,26 +75,133 @@ function AgentRunRow({ run }: { run: AgentRun }) {
   );
 }
 
-export default function DashboardPage() {
+// ── Start Here Checklist ───────────────────────────────────────────────────
+
+function ChecklistItem({
+  done,
+  label,
+  description,
+  href,
+  icon: Icon,
+}: {
+  done: boolean;
+  label: string;
+  description: string;
+  href: string;
+  icon: React.ElementType;
+}) {
+  return (
+    <div className={`flex items-start gap-3 py-3 ${done ? "opacity-50" : ""}`}>
+      <div className="mt-0.5">
+        {done ? (
+          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+        ) : (
+          <Circle className="h-4 w-4 text-zinc-600 shrink-0" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className={`text-sm font-medium ${done ? "line-through text-zinc-500" : "text-zinc-200"}`}>
+            {label}
+          </p>
+        </div>
+        {!done && <p className="text-xs text-zinc-500 mt-0.5">{description}</p>}
+      </div>
+      {!done && (
+        <Link
+          href={href}
+          className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-zinc-300 bg-white/6 hover:bg-white/10 rounded-lg px-3 py-1.5 transition-colors"
+        >
+          <Icon className="h-3 w-3" />
+          Go
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function StartHereChecklist({ stats }: { stats: DashboardStats }) {
+  const items = [
+    {
+      done: stats.resume_uploaded,
+      label: "Upload your resume",
+      description: "Claude parses it and tailors it for every application",
+      href: "/resume",
+      icon: Upload,
+    },
+    {
+      done: stats.target_roles_configured,
+      label: "Set target roles + location",
+      description: "Tell Job Scout what to look for",
+      href: "/settings",
+      icon: Briefcase,
+    },
+    {
+      done: stats.companies_configured,
+      label: "Add target companies or type",
+      description: "5–10 specific companies or a company type for best networking results",
+      href: "/settings",
+      icon: Building2,
+    },
+    {
+      done: stats.first_run_completed,
+      label: "Generate your first leads",
+      description: "Run Job Scout + Networking Agent to see your first matches",
+      href: "/dashboard",
+      icon: Zap,
+    },
+  ];
+
+  const completedCount = items.filter((i) => i.done).length;
+  if (completedCount === items.length) return null;
+
+  return (
+    <div className="rounded-xl border border-white/8 bg-white/3 p-5">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-sm font-medium">Start here</h2>
+        <span className="text-xs text-zinc-500">{completedCount}/{items.length} done</span>
+      </div>
+      <p className="text-xs text-zinc-500 mb-4">Complete setup to unlock the full agent experience.</p>
+      <div className="divide-y divide-white/5">
+        {items.map((item) => (
+          <ChecklistItem key={item.label} {...item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────
+
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const isFirstRun = searchParams.get("first_run") === "true";
+  const [firstRunBannerDismissed, setFirstRunBannerDismissed] = useState(false);
+
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["dashboard-stats"],
     queryFn: dashboard.stats,
   });
-  const { data: activity } = useQuery({ queryKey: ["dashboard-activity"], queryFn: dashboard.activity });
-  const { data: runs } = useQuery<AgentRun[]>({
+  const { data: runs, refetch: refetchRuns } = useQuery<AgentRun[]>({
     queryKey: ["agent-runs"],
     queryFn: () => agents.runs(),
-    refetchInterval: 15_000,
+    refetchInterval: isFirstRun ? 5_000 : 15_000,
   });
+
+  useEffect(() => {
+    if (isFirstRun) track("first_run_dashboard_viewed");
+  }, [isFirstRun]);
 
   const runAgent = async (fn: () => Promise<unknown>, label: string) => {
     try {
       await fn();
       toast.success(`${label} started`);
+      refetchRuns();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("402") || msg.toLowerCase().includes("limit reached")) {
         toast.error("Monthly run limit reached — upgrade to Pro for unlimited runs");
+        track("paywall_viewed", { source: "agent_run_limit" });
       } else {
         toast.error(`Failed to start ${label}`);
       }
@@ -108,6 +210,8 @@ export default function DashboardPage() {
 
   if (isLoading) return <div className="animate-pulse text-zinc-500 text-sm">Loading…</div>;
 
+  const activeRuns = runs?.filter((r) => r.status === "running" || r.status === "queued") ?? [];
+
   return (
     <div className="space-y-8">
       <div>
@@ -115,24 +219,52 @@ export default function DashboardPage() {
         <p className="text-sm text-zinc-400 mt-1">Your agents are working 24/7</p>
       </div>
 
-      {/* Setup banner — shown when target roles not yet configured */}
-      {stats && !stats.target_roles_configured && (
+      {/* First-run in-progress banner */}
+      {isFirstRun && !firstRunBannerDismissed && (
+        <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/3 p-4">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/8">
+            <Zap className="h-4 w-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-zinc-200">
+              {activeRuns.length > 0 ? "Agents are running…" : "First run complete!"}
+            </p>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              {activeRuns.length > 0
+                ? "Job Scout and Networking Agent are finding your first matches. Results appear below as they come in."
+                : "Scroll down to see your jobs and contacts. Your agents will keep running automatically."}
+            </p>
+          </div>
+          <button
+            onClick={() => setFirstRunBannerDismissed(true)}
+            className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Setup banner — only if roles not configured and no checklist visible */}
+      {stats && !stats.target_roles_configured && !isFirstRun && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-400/20 bg-amber-400/8 p-4">
           <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-amber-300">Finish setting up your profile</p>
             <p className="text-xs text-amber-400/80 mt-0.5">
-              Add your target roles and companies in Settings so your agents know what to look for.
+              Add your target roles and companies so your agents know what to look for.
             </p>
           </div>
-          <a
+          <Link
             href="/settings"
             className="shrink-0 text-xs font-medium text-amber-300 bg-amber-400/15 hover:bg-amber-400/25 rounded-lg px-3 py-1.5 transition-colors"
           >
             Go to Settings
-          </a>
+          </Link>
         </div>
       )}
+
+      {/* Start here checklist */}
+      {stats && <StartHereChecklist stats={stats} />}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -170,12 +302,13 @@ export default function DashboardPage() {
               );
             })}
           </div>
-          <a
+          <Link
             href="/pricing"
+            onClick={() => track("paywall_viewed", { source: "dashboard_usage_bar" })}
             className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-white bg-white/8 hover:bg-white/12 rounded-lg px-3 py-1.5 transition-colors"
           >
             <Sparkles className="h-3 w-3" /> Upgrade to Pro for unlimited runs
-          </a>
+          </Link>
         </div>
       )}
 
@@ -212,5 +345,13 @@ export default function DashboardPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="animate-pulse text-zinc-500 text-sm">Loading…</div>}>
+      <DashboardContent />
+    </Suspense>
   );
 }

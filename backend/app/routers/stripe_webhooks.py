@@ -10,6 +10,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.services.analytics import posthog_capture
 
 stripe.api_key = settings.stripe_secret_key
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 sub.stripe_subscription_id = stripe_subscription_id
                 await db.commit()
                 logger.info("Upgraded user %s to pro", user.email)
+                await posthog_capture(str(user.id), "subscription_paid", {"plan": "pro", "email": user.email})
 
     elif event["type"] in ("customer.subscription.deleted", "customer.subscription.updated"):
         subscription_obj = event["data"]["object"]
@@ -66,6 +68,13 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 sub.status = new_status
             await db.commit()
             logger.info("Subscription %s status → %s", stripe_sub_id, new_status)
+            # Look up user for PostHog
+            from app.models.user import User as UserModel
+            user_result = await db.execute(select(UserModel).where(UserModel.id == sub.user_id))
+            sub_user = user_result.scalar_one_or_none()
+            if sub_user:
+                ph_event = "subscription_canceled" if new_status == "canceled" else f"subscription_{new_status}"
+                await posthog_capture(str(sub_user.id), ph_event, {"status": new_status})
 
     return {"ok": True}
 

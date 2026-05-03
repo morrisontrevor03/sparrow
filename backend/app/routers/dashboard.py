@@ -10,6 +10,7 @@ from app.models.contact import Contact
 from app.models.job import Job
 from app.models.subscription import MonthlyUsage, Subscription
 from app.models.user import User, UserPreferences
+from app.models.resume import Resume
 from app.config import settings as app_settings
 from datetime import datetime, timezone
 
@@ -59,6 +60,21 @@ async def get_stats(
     )
     prefs = prefs_result.scalar_one_or_none()
     target_roles_configured = bool(prefs and prefs.target_roles)
+    companies_configured = bool(
+        prefs and (prefs.target_companies or prefs.work_environment or prefs.company_stages)
+    )
+
+    resume_result = await db.execute(
+        select(Resume).where(Resume.user_id == current_user.id).limit(1)
+    )
+    resume_uploaded = resume_result.scalar_one_or_none() is not None
+
+    first_run_result = await db.execute(
+        select(AgentRun.id)
+        .where(AgentRun.user_id == current_user.id, AgentRun.status == "completed")
+        .limit(1)
+    )
+    first_run_completed = first_run_result.scalar_one_or_none() is not None
 
     # Agent run counts this month — single GROUP BY instead of 3 separate queries
     run_counts_result = await db.execute(
@@ -77,6 +93,9 @@ async def get_stats(
         "contacts_count": contacts_count or 0,
         "plan": plan,
         "target_roles_configured": target_roles_configured,
+        "resume_uploaded": resume_uploaded,
+        "companies_configured": companies_configured,
+        "first_run_completed": first_run_completed,
         "usage": {
             "jobs_surfaced": usage.jobs_surfaced if usage else 0,
             "contacts_surfaced": usage.contacts_surfaced if usage else 0,
