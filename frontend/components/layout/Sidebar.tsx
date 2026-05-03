@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Briefcase, FileText, Users, Upload, Settings, LogOut, Zap
+  LayoutDashboard, Briefcase, Users, Upload, Settings, LogOut, Zap
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/applications", label: "Applications", icon: FileText },
   { href: "/networking", label: "Networking", icon: Users },
   { href: "/resume", label: "Resume", icon: Upload },
   { href: "/settings", label: "Settings", icon: Settings },
