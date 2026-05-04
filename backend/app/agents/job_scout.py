@@ -222,21 +222,26 @@ class JobScoutAgent(BaseAgent):
     def _passes_location_filter(job: dict, target_locations: list[str]) -> bool:
         """Enforce that the job location matches at least one of the user's target locations.
 
-        Remote jobs pass if "remote" is in any target location. Jobs with an empty
-        location field are assumed remote and pass only when the user wants remote.
+        If the user accepts remote work, all jobs pass — the LLM scores remote eligibility.
+        Only apply strict city/region filtering when the user wants on-site only.
         """
         if not target_locations:
             return True
 
-        wants_remote = any("remote" in loc.lower() for loc in target_locations)
+        # If user accepts remote, pass everything — many remote jobs are posted with
+        # an office city as the listed location even though remote is allowed.
+        if any("remote" in loc.lower() for loc in target_locations):
+            return True
+
         job_location = (job.get("location") or "").lower().strip()
 
-        # Empty location treated as remote
-        if not job_location:
-            return wants_remote
-
+        # Job explicitly says remote but user doesn't want remote — reject
         if "remote" in job_location or "anywhere" in job_location:
-            return wants_remote
+            return False
+
+        # Empty location is ambiguous — pass it through, let the LLM decide
+        if not job_location:
+            return True
 
         for loc in target_locations:
             if loc.lower() in job_location or job_location in loc.lower():
@@ -254,12 +259,18 @@ class JobScoutAgent(BaseAgent):
         """Deterministic pre-pass: search both APIs for a specific company + role."""
         results: list[dict] = []
         seen_ids: set[str] = set()
-        location_str = locations[0] if locations else ""
+
+        # Don't pass "Remote" as a location to job APIs — they don't understand it.
+        # Use the first real city/region, or empty string to search broadly.
+        real_locations = [loc for loc in locations if "remote" not in loc.lower()]
+        location_str = real_locations[0] if real_locations else ""
+
         role = roles[0] if roles else "software engineer"
 
-        keywords = f"{role} {company}"
-        adzuna = await job_api_client.search_adzuna(keywords, location_str, max_results=10)
-        jsearch = await job_api_client.search_jsearch(keywords, location_str, max_results=5)
+        # Adzuna: search by role only, let company post-filter narrow to the right employer
+        adzuna = await job_api_client.search_adzuna(role, location_str, max_results=20)
+        # JSearch: free-form query works better with company name included
+        jsearch = await job_api_client.search_jsearch(f"{role} at {company}", location_str, max_results=10)
 
         for item in adzuna + jsearch:
             ext_id = item.get("external_id") or item.get("url", "")
