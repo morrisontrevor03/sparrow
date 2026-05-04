@@ -28,6 +28,96 @@ _JOB_DOMAINS = [
 ]
 
 
+_INDEX_PATH_TOKENS = (
+    "/search", "/all-jobs", "/all_jobs", "/results",
+)
+
+
+def is_specific_posting(url: str) -> bool:
+    """True only when the URL looks like an individual job posting, not a careers/search/index page.
+
+    Different ATSs encode posting IDs differently — this hard-codes the patterns
+    for the major ones and falls back to a "last segment must look like an ID"
+    heuristic for company career pages.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    host = (parsed.hostname or "").lower()
+    path = (parsed.path or "").rstrip("/")
+    qs = (parsed.query or "").lower()
+    path_lower = path.lower()
+
+    # Hard reject: search/index pages on any host
+    if any(tok in path_lower for tok in _INDEX_PATH_TOKENS):
+        return False
+    if path_lower.endswith(("/jobs", "/careers", "/career", "/positions", "/opportunities", "/openings", "/work-with-us", "/join-us", "/team")):
+        return False
+    if not path or path == "/":
+        return False
+    if "keywords=" in qs or "search=" in qs or "q=" in qs:
+        return False
+
+    segments = [s for s in path.split("/") if s]
+
+    # Greenhouse: boards.greenhouse.io/<co>/jobs/<numeric-id>
+    if "greenhouse.io" in host:
+        if "jobs" in segments:
+            i = segments.index("jobs")
+            return i + 1 < len(segments) and any(c.isdigit() for c in segments[i + 1])
+        return False
+
+    # Lever: jobs.lever.co/<co>/<uuid-or-slug>
+    if "lever.co" in host:
+        return len(segments) >= 2 and len(segments[1]) >= 8
+
+    # Ashby: <co>.ashbyhq.com/<uuid>  or  jobs.ashbyhq.com/<co>/<uuid>
+    if "ashbyhq.com" in host:
+        if host.startswith("jobs."):
+            return len(segments) >= 2 and len(segments[1]) >= 8
+        return len(segments) >= 1 and len(segments[0]) >= 8
+
+    # Workday: <co>.myworkdayjobs.com/.../job/.../R-12345
+    if "myworkdayjobs.com" in host or "workday.com" in host:
+        if "/job/" in path_lower:
+            return True
+        return any(re.match(r"^(r-|jr-?|req-?)\d+", s, re.IGNORECASE) for s in segments)
+
+    # Smartrecruiters: jobs.smartrecruiters.com/<co>/<id>
+    if "smartrecruiters.com" in host:
+        return len(segments) >= 2
+
+    # Workable: apply.workable.com/<co>/j/<id>
+    if "workable.com" in host:
+        return "/j/" in path_lower
+
+    # LinkedIn: linkedin.com/jobs/view/<id>
+    if "linkedin.com" in host:
+        return "/jobs/view/" in path_lower
+
+    # Indeed: viewjob in path or jk= in querystring
+    if "indeed.com" in host:
+        return "viewjob" in path_lower or "jk=" in qs
+
+    # Glassdoor: only individual /job-listing/ pages are real postings;
+    # /Job/jobs.htm and /Job/<query>.htm are search/index pages
+    if "glassdoor.com" in host:
+        return "/job-listing/" in path_lower
+
+    # iCIMS: /jobs/<numeric>/...
+    if "icims.com" in host:
+        return any(s.isdigit() and len(s) >= 4 for s in segments)
+
+    # Generic company careers: last segment must look like an ID
+    last = segments[-1]
+    if any(c.isdigit() for c in last):
+        return True
+    if len(last) >= 15:  # long descriptive slug
+        return True
+    return False
+
+
 def _company_from_url(url: str) -> str:
     """Extract company name from common ATS URL patterns. Returns '' if unknown."""
     try:
@@ -189,6 +279,8 @@ async def search_jobs_exa(
         url = item.get("url", "")
         if not url:
             continue
+        if not is_specific_posting(url):
+            continue
 
         page_title = item.get("title", "")
         parsed_title, parsed_company = _parse_exa_job_title(page_title)
@@ -305,6 +397,9 @@ async def search_jsearch(query: str, location: str = "", max_results: int = 10) 
 
     results = []
     for item in data.get("data", [])[:max_results]:
+        url = item.get("job_apply_link") or item.get("job_google_link", "")
+        if not url or not is_specific_posting(url):
+            continue
         results.append({
             "external_id": item.get("job_id", ""),
             "source": "jsearch",
@@ -312,7 +407,7 @@ async def search_jsearch(query: str, location: str = "", max_results: int = 10) 
             "company": item.get("employer_name", "Unknown"),
             "location": f"{item.get('job_city', '')} {item.get('job_state', '')} {item.get('job_country', '')}".strip(),
             "description": item.get("job_description", ""),
-            "url": item.get("job_apply_link") or item.get("job_google_link", ""),
+            "url": url,
             "salary_min": item.get("job_min_salary"),
             "salary_max": item.get("job_max_salary"),
             "employment_type": item.get("job_employment_type"),
