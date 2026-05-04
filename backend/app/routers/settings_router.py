@@ -1,11 +1,16 @@
+import re
+
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User, UserPreferences
+from app.services.company_match import FUNDING_DB_KEYWORDS, clean_company_name
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -82,3 +87,61 @@ async def update_settings(
     await db.commit()
     await db.refresh(prefs)
     return prefs
+
+
+class AutocompleteRequest(BaseModel):
+    seed_companies: list[str]
+
+
+@router.post("/companies/autocomplete")
+async def autocomplete_companies(
+    body: AutocompleteRequest,
+    current_user: User = Depends(get_current_user),
+):
+    if len(body.seed_companies) < 5:
+        raise HTTPException(status_code=400, detail="Add at least 5 companies before using Autocomplete")
+
+    max_suggestions = 25 - len(body.seed_companies)
+    if max_suggestions <= 0:
+        return {"suggestions": []}
+
+    seeds_str = ", ".join(body.seed_companies[:20])
+    prompt = (
+        f"List exactly {max_suggestions} real, currently-active technology companies "
+        f"that are similar in size, stage, and industry to these companies: {seeds_str}.\n\n"
+        "Rules:\n"
+        "- Do NOT include any of the seed companies or obvious variants of them.\n"
+        "- One company name per line, no numbering, no extra text.\n"
+        "- Official trading name only (e.g. 'Stripe' not 'Stripe Inc.').\n"
+        "- Only include actual operating technology businesses — not investment data platforms "
+        "(PitchBook, Crunchbase, AngelList, Carta, CB Insights, Dealroom, Preqin, etc.).\n"
+        f"If fewer than {max_suggestions} companies match, return as many as you can."
+    )
+
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    resp = await client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=400,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = resp.content[0].text.strip()
+
+    seed_lower = {clean_company_name(c).lower() for c in body.seed_companies}
+    suggestions: list[str] = []
+    for line in raw.splitlines():
+        name = line.strip()
+        if not name:
+            continue
+        name = re.sub(r"^[\d]+[.)]\s*", "", name)
+        name = re.sub(r"^[-•]\s*", "", name)
+        if not name:
+            continue
+        if any(kw in name.lower() for kw in FUNDING_DB_KEYWORDS):
+            continue
+        if clean_company_name(name).lower() in seed_lower:
+            continue
+        suggestions.append(name)
+        if len(suggestions) >= max_suggestions:
+            break
+
+    return {"suggestions": suggestions}

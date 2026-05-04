@@ -1,8 +1,9 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { jobs, applications, Job } from "@/lib/api";
+import { jobs, agents, applications, Job, AgentRun } from "@/lib/api";
 import { ExternalLink, X, MapPin, DollarSign, Loader2, Download } from "lucide-react";
+import Link from "next/link";
 
 function MatchBadge({ score }: { score: number | null }) {
   if (score === null) return null;
@@ -136,12 +137,20 @@ export default function JobsPage() {
     queryKey: ["jobs"],
     queryFn: () => jobs.list(),
   });
+  const { data: runs } = useQuery<AgentRun[]>({
+    queryKey: ["agent-runs"],
+    queryFn: () => agents.runs(),
+  });
 
   const dismissMutation = useMutation({
     mutationFn: jobs.dismiss,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
     onError: () => toast.error("Failed to dismiss"),
   });
+
+  const hasCompletedScoutRun = runs?.some(
+    (r) => r.agent_type === "job_scout" && r.status === "completed"
+  );
 
   if (isLoading) return <div className="animate-pulse text-zinc-500 text-sm">Loading…</div>;
 
@@ -156,8 +165,22 @@ export default function JobsPage() {
 
       {data.length === 0 ? (
         <div className="rounded-xl border border-white/8 bg-white/3 p-12 text-center grid-bg">
-          <p className="text-zinc-400 text-sm">No jobs yet. The Job Scout agent runs every 4 hours.</p>
-          <p className="text-zinc-500 text-xs mt-2">You can trigger it manually from the Dashboard.</p>
+          {hasCompletedScoutRun ? (
+            <>
+              <p className="text-zinc-400 text-sm">No matches yet.</p>
+              <p className="text-zinc-500 text-xs mt-2">
+                Try adding more locations, expanding target roles, or using{" "}
+                <Link href="/settings" className="underline underline-offset-2 hover:text-zinc-300">
+                  Autocomplete in Settings
+                </Link>.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-zinc-400 text-sm">No jobs yet. The Job Scout agent runs every 4 hours.</p>
+              <p className="text-zinc-500 text-xs mt-2">You can trigger it manually from the Dashboard.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3">

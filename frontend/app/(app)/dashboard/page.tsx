@@ -61,13 +61,22 @@ function AgentRunRow({ run }: { run: AgentRun }) {
           <span className="text-xs text-zinc-600">{run.trigger}</span>
           {duration && <span className="text-xs text-zinc-600 flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" />{duration}</span>}
         </div>
+        {run.status === "running" && run.current_step && (
+          <p className="text-xs text-zinc-400 mt-0.5 animate-pulse">{run.current_step}</p>
+        )}
         {run.status === "failed" && run.error_message && (
           <p className="text-xs text-red-400 mt-0.5 truncate" title={run.error_message}>
             {run.error_message.length > 80 ? run.error_message.slice(0, 80) + "…" : run.error_message}
           </p>
         )}
         {run.status === "completed" && (
-          <p className="text-xs text-zinc-500 mt-0.5">{results || "No new results"}</p>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            {results || (
+              <Link href="/settings" className="underline underline-offset-2 hover:text-zinc-400">
+                No new results — adjust Settings
+              </Link>
+            )}
+          </p>
         )}
       </div>
       <span className="text-xs text-zinc-600 shrink-0">{when}</span>
@@ -185,7 +194,8 @@ function DashboardContent() {
   const { data: runs, refetch: refetchRuns } = useQuery<AgentRun[]>({
     queryKey: ["agent-runs"],
     queryFn: () => agents.runs(),
-    refetchInterval: isFirstRun ? 5_000 : 15_000,
+    refetchInterval: (query) =>
+      query.state.data?.some((r: AgentRun) => r.status === "running") ? 3_000 : 30_000,
   });
 
   useEffect(() => {

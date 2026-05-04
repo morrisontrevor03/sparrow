@@ -96,6 +96,28 @@ async def create_checkout_session(
     return {"url": session.url}
 
 
+@router.post("/billing-portal")
+async def billing_portal(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Subscription).where(Subscription.user_id == current_user.id))
+    sub = result.scalar_one_or_none()
+
+    if not sub or not sub.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer on record — please upgrade first")
+
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=sub.stripe_customer_id,
+            return_url=f"{settings.frontend_url}/settings",
+        )
+    except stripe.StripeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"url": session.url}
+
+
 @router.post("/cancel-subscription")
 async def cancel_subscription(
     current_user: User = Depends(get_current_user),

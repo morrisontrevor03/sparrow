@@ -9,6 +9,12 @@ from app.config import settings
 from app.models.contact import Contact
 from app.models.user import User, UserPreferences
 from app.services import quota
+from app.services.company_match import (
+    FUNDING_DB_KEYWORDS,
+    clean_company_name,
+    companies_match,
+    query_company_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,32 +39,10 @@ def _is_yc_company(company: str) -> bool:
     return "(yc " in company.lower()
 
 
-def _clean_company_name(company: str) -> str:
-    """Strip any trailing parenthetical (e.g. '(YC S26)') for company matching."""
-    import re
-    return re.sub(r"\s*\([^)]*\)\s*$", "", company).strip()
-
-
-def _query_company_name(company: str) -> str:
-    """Format a company name for Exa search queries.
-
-    YC companies keep their batch tag (parens removed) so the query is
-    anchored to the right startup — 'Harbor YC S26' not just 'Harbor'.
-    Other companies have any trailing parenthetical stripped.
-    """
-    import re
-    m = re.search(r"\(YC ([^)]+)\)", company, re.IGNORECASE)
-    if m:
-        base = _clean_company_name(company)
-        return f"{base} YC {m.group(1)}"
-    return _clean_company_name(company)
-
-
-def _companies_match(target: str, found: str) -> bool:
-    # Compare against the clean name so '(YC S26)' doesn't break matching.
-    t = _clean_company_name(target).lower().strip()
-    f = found.lower().strip()
-    return t in f or f in t
+# Aliases so the rest of this file keeps the same private-style names
+_clean_company_name = clean_company_name
+_query_company_name = query_company_name
+_companies_match = companies_match
 
 
 def _extract_current_company(text: str) -> str:
@@ -138,6 +122,8 @@ class NetworkingAgent(BaseAgent):
     max_iterations = 1  # unused but required by base
 
     async def _execute(self, company: str | None = None, **kwargs) -> dict:
+        await self._update_progress("Loading preferences")
+
         user_result = await self.db.execute(select(User).where(User.id == self.user_id))
         user = user_result.scalar_one_or_none()
         if not user:
@@ -158,10 +144,18 @@ class NetworkingAgent(BaseAgent):
         )
         self._seen_urls: set[str] = {row[0] for row in existing_result}
 
+        # Determine target locations for query enrichment (skip if only "Remote")
+        target_locations: list[str] = prefs.target_locations or []
+        only_remote = all("remote" in loc.lower() for loc in target_locations) if target_locations else True
+        self._location_hint: str = (
+            target_locations[0] if target_locations and not only_remote else ""
+        )
+
         if company:
             companies = [company]
         else:
             manual = list(prefs.target_companies or [])
+            await self._update_progress("Discovering additional companies")
             discovered = await self._discover_companies(prefs)
             manual_lower = {_clean_company_name(c).lower() for c in manual}
             unique_discovered = [c for c in discovered if c.lower() not in manual_lower]
@@ -180,7 +174,9 @@ class NetworkingAgent(BaseAgent):
         ]
 
         contacts: list[dict] = []
-        for target_company in companies[:TARGET_COMPANY_COUNT]:
+        total = min(len(companies), TARGET_COMPANY_COUNT)
+        for idx, target_company in enumerate(companies[:TARGET_COMPANY_COUNT], 1):
+            await self._update_progress(f"Searching contacts at {target_company} ({idx}/{total})")
             # Two searches per company: mid-level ICs and junior/entry-level
             for titles in [prefs.target_roles[:4], junior_titles]:
                 if titles:
@@ -195,9 +191,11 @@ class NetworkingAgent(BaseAgent):
 
         logger.info("Networking: %d raw profiles collected", len(contacts))
 
+        await self._update_progress("Saving contacts")
         saved, new_contacts = await self._save_contacts(contacts)
 
         if saved > 0:
+            await self._update_progress("Drafting outreach messages")
             await self._draft_outreach_messages(new_contacts, prefs)
 
         return {"summary": f"Saved {saved} new contacts", "contacts_found": saved}
@@ -220,7 +218,12 @@ class NetworkingAgent(BaseAgent):
             f"List exactly {MAX_DISCOVERED_COMPANIES} real, currently-active technology companies "
             f"matching ALL of: {'; '.join(parts)}.\n\n"
             "IMPORTANT: Use only the company's LATEST/MOST RECENT funding round — not any historical round. "
-            "For example, OpenAI must NOT be included for 'Series A' because its latest round is Series G. "
+            "For example, OpenAI must NOT be included for 'Series A' because its latest round is Series G.\n\n"
+            "CRITICAL: Do NOT include companies whose primary business is tracking, indexing, or aggregating "
+            "startup/investment data. Exclude platforms like PitchBook, AngelList, Crunchbase, Carta, "
+            "CB Insights, Dealroom, Preqin, or any similar venture data / fundraising tools. "
+            "Only include companies that are actual operating technology businesses (e.g. SaaS, fintech, "
+            "healthtech, devtools, marketplace, etc.) that themselves raised funding at the specified stage.\n\n"
             "Rules: one company name per line, no numbering, no extra text, official trading name only "
             "(e.g. 'Stripe' not 'Stripe Inc.'). If fewer real companies match, return as many as you can."
         )
@@ -232,11 +235,16 @@ class NetworkingAgent(BaseAgent):
             if not name:
                 continue
             # Strip leading "1. " / "1) " / "- " that Claude adds despite instructions
-            import re as _re
-            name = _re.sub(r"^[\d]+[.)]\s*", "", name)
-            name = _re.sub(r"^[-•]\s*", "", name)
+            import re
+            name = re.sub(r"^[\d]+[.)]\s*", "", name)
+            name = re.sub(r"^[-•]\s*", "", name)
             if name:
                 companies.append(name)
+        # Strip known funding-data platforms that the LLM confuses for funded startups
+        companies = [
+            c for c in companies
+            if not any(kw in c.lower() for kw in FUNDING_DB_KEYWORDS)
+        ]
         companies = companies[:MAX_DISCOVERED_COMPANIES]
         logger.info("Discovered %d companies", len(companies))
         return companies
@@ -249,6 +257,11 @@ class NetworkingAgent(BaseAgent):
             query = f"{titles[0]} or {titles[1]} at {query_company}"
         else:
             query = f"{titles[0]} at {query_company}"
+
+        # Boost query with location when user wants a specific city/region (not just remote)
+        location_hint = getattr(self, "_location_hint", "")
+        if location_hint:
+            query = f"{query} in {location_hint}"
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:

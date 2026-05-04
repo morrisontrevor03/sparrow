@@ -74,6 +74,7 @@ class BaseAgent:
             self._run.error_message = str(exc)
             raise
         finally:
+            self._run.current_step = None
             self._run.tool_calls = self._tool_calls_log
             self._run.tokens_used = self._total_tokens
             self._run.completed_at = datetime.now(timezone.utc)
@@ -81,6 +82,12 @@ class BaseAgent:
             await self.db.commit()
 
         return result
+
+    async def _update_progress(self, message: str) -> None:
+        """Commit a live status message visible to the dashboard poller."""
+        if self._run:
+            self._run.current_step = message
+            await self.db.commit()
 
     async def _execute(self, **kwargs) -> dict:
         """Override in subclasses to implement agent logic."""

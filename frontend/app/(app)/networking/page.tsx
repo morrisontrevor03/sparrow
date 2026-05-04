@@ -2,7 +2,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { contacts as contactsApi, agents, settingsApi, Contact, Preferences } from "@/lib/api";
+import { contacts as contactsApi, agents, settingsApi, Contact, Preferences, AgentRun } from "@/lib/api";
+import Link from "next/link";
 import { NetworkGraph } from "@/components/networking/NetworkGraph";
 import {
   Copy, ExternalLink, Users, Search, X,
@@ -399,6 +400,15 @@ export default function NetworkingPage() {
     queryFn: settingsApi.get,
   });
 
+  const { data: runs } = useQuery<AgentRun[]>({
+    queryKey: ["agent-runs"],
+    queryFn: () => agents.runs(),
+  });
+
+  const hasCompletedNetworkingRun = runs?.some(
+    (r) => r.agent_type === "networking" && r.status === "completed"
+  );
+
   const qc = useQueryClient();
 
   const [view, setView] = useState<ViewMode>("list");
@@ -591,9 +601,18 @@ export default function NetworkingPage() {
         <div className="rounded-xl border border-white/8 bg-white/3 p-12 text-center">
           <Users className="h-8 w-8 text-zinc-600 mx-auto mb-3" />
           <p className="text-zinc-400 text-sm">No contacts yet.</p>
-          <p className="text-zinc-500 text-xs mt-1">
-            Set target roles in Settings and run the Networking Agent from the dashboard.
-          </p>
+          {hasCompletedNetworkingRun ? (
+            <p className="text-zinc-500 text-xs mt-1">
+              No matches found — try adding more target companies or expanding your role in{" "}
+              <Link href="/settings" className="underline underline-offset-2 hover:text-zinc-300">
+                Settings
+              </Link>.
+            </p>
+          ) : (
+            <p className="text-zinc-500 text-xs mt-1">
+              Set target companies in Settings and run the Networking Agent from the dashboard.
+            </p>
+          )}
         </div>
       ) : view === "list" ? (
         <>

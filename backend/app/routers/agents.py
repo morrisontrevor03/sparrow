@@ -177,6 +177,7 @@ async def list_runs(
             "tokens_used": r.tokens_used,
             "duration_ms": r.duration_ms,
             "error_message": r.error_message,
+            "current_step": r.current_step,
             "started_at": r.started_at.isoformat() if r.started_at else None,
             "completed_at": r.completed_at.isoformat() if r.completed_at else None,
         }

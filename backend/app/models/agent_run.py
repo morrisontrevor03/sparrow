@@ -22,6 +22,7 @@ class AgentRun(Base):
     jobs_found: Mapped[int] = mapped_column(Integer, default=0)
     contacts_found: Mapped[int] = mapped_column(Integer, default=0)
     applications_created: Mapped[int] = mapped_column(Integer, default=0)
+    current_step: Mapped[str | None] = mapped_column(String(255))
     error_message: Mapped[str | None] = mapped_column(Text)
     tokens_used: Mapped[int | None] = mapped_column(Integer)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

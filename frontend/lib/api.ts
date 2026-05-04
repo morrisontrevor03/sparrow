@@ -146,6 +146,11 @@ export const settingsApi = {
   get: () => request<Preferences>("/api/settings"),
   update: (data: Partial<Preferences>) =>
     request<Preferences>("/api/settings", { method: "PUT", body: JSON.stringify(data) }),
+  autocompleteCompanies: (seedCompanies: string[]) =>
+    request<{ suggestions: string[] }>("/api/settings/companies/autocomplete", {
+      method: "POST",
+      body: JSON.stringify({ seed_companies: seedCompanies }),
+    }),
 };
 
 // Agents
@@ -163,6 +168,8 @@ export const stripe = {
     request<{ url: string }>("/api/stripe/create-checkout-session", { method: "POST" }),
   cancelSubscription: () =>
     request<{ ok: boolean }>("/api/stripe/cancel-subscription", { method: "POST" }),
+  billingPortal: () =>
+    request<{ url: string }>("/api/stripe/billing-portal", { method: "POST" }),
 };
 
 // Types
@@ -296,6 +303,7 @@ export interface AgentRun {
   tokens_used: number | null;
   duration_ms: number | null;
   error_message: string | null;
+  current_step: string | null;
   started_at: string;
   completed_at: string | null;
 }
