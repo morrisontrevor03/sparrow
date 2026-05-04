@@ -34,9 +34,21 @@ _TITLE_LEVEL_GATES = [
 
 _LEVEL_ORDER = {"entry": 0, "junior": 1, "mid": 2, "senior": 3, "staff": 4, "lead": 4}
 
-_YOE_PATTERN = re.compile(r"(\d+)\s*\+?\s*(?:-\s*\d+\s*)?(?:years?|yrs?)\s+(?:of\s+)?(?:experience|exp)", re.IGNORECASE)
+# Catches "5+ years of experience", "5 yrs experience", "3-5 years experience",
+# and "5+ years of <adjective(s)> experience" (e.g. "5+ years of software engineering experience").
+_YOE_PATTERN = re.compile(
+    r"(\d+)\s*\+?\s*(?:to\s*\d+\s*|-\s*\d+\s*)?(?:years?|yrs?)(?:\s+\w+){0,5}?\s+(?:experience|exp)\b",
+    re.IGNORECASE,
+)
+# Catches "minimum 3 years", "at least 5 years", "requires 4+ years"
+_YOE_MIN_PATTERN = re.compile(
+    r"(?:minimum|at\s+least|requires?|min\.?)\s+(?:of\s+)?(\d+)\s*\+?\s*(?:years?|yrs?)",
+    re.IGNORECASE,
+)
 
-_LEVEL_MAX_YOE = {"entry": 2, "junior": 3, "mid": 6, "senior": 9, "staff": 99, "lead": 99}
+# Strict cap on required YOE the user can accept. A posting demanding >= this
+# many years is rejected. Tracks the level's typical YOE upper bound + 1.
+_LEVEL_MAX_YOE = {"entry": 2, "junior": 4, "mid": 6, "senior": 10, "staff": 99, "lead": 99}
 
 
 def _experience_hard_rules(experience_level: str, employment_types: list[str]) -> str:
@@ -131,15 +143,18 @@ class JobScoutAgent(BaseAgent):
                 if user_level < min_level:
                     return False
 
-        # YOE check from description: drop if any required YOE > user's max
+        # YOE check from description: drop if any required YOE >= user's max.
+        # >= matters: a job saying "2+ years" requires 2 or more, which an
+        # entry-level (0–1 YOE) candidate doesn't have.
         max_yoe = _LEVEL_MAX_YOE.get(experience_level or "mid", 6)
-        for m in _YOE_PATTERN.finditer(description):
-            try:
-                required = int(m.group(1))
-            except ValueError:
-                continue
-            if required > max_yoe:
-                return False
+        for pattern in (_YOE_PATTERN, _YOE_MIN_PATTERN):
+            for m in pattern.finditer(description):
+                try:
+                    required = int(m.group(1))
+                except ValueError:
+                    continue
+                if required >= max_yoe:
+                    return False
         return True
 
     @staticmethod
@@ -207,8 +222,10 @@ Candidate profile:
 {hard_rules}
 
 ADDITIONAL HARD RULES (apply BEFORE scoring):
-- If the description mentions "X+ years" of experience and X exceeds the candidate's level cap, score 0.
-  Caps: entry≤2yr, junior≤3yr, mid≤6yr, senior≤9yr.
+- If the description mentions "X+ years" / "minimum X years" / "at least X years" of experience and the
+  candidate doesn't meet X, score 0. Required years the candidate CANNOT meet:
+  entry: 2+ years required → 0. junior: 4+ years required → 0. mid: 6+ years required → 0.
+  senior: 10+ years required → 0.
 - If the title strongly implies a higher level than the candidate (Staff, Principal, Director, VP, Manager,
   Architect for non-staff users), score 0.
 - Do NOT inflate scores for adjacent-but-wrong roles. A "Sales Engineer" listing is not a match for a
