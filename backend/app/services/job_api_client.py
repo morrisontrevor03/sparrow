@@ -1,10 +1,13 @@
+import asyncio
 import logging
 import re
 from datetime import datetime
+from urllib.parse import urlparse
 
 import httpx
 
 from app.config import settings
+from app.services.company_match import companies_match
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,91 @@ _JOB_DOMAINS = [
     "jobs.lever.co",
     "boards.greenhouse.io",
 ]
+
+
+def _company_from_url(url: str) -> str:
+    """Extract company name from common ATS URL patterns. Returns '' if unknown."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return ""
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or ""
+
+    # boards.greenhouse.io/<company>/jobs/...
+    if host == "boards.greenhouse.io" or host.endswith(".greenhouse.io"):
+        m = re.match(r"^/([^/]+)/", path)
+        if m:
+            return m.group(1).replace("-", " ").replace("_", " ")
+
+    # jobs.lever.co/<company>/...
+    if host == "jobs.lever.co" or host.endswith(".lever.co"):
+        m = re.match(r"^/([^/]+)/", path)
+        if m:
+            return m.group(1).replace("-", " ").replace("_", " ")
+
+    # <company>.ashbyhq.com/... or jobs.ashbyhq.com/<company>/...
+    if host.endswith(".ashbyhq.com"):
+        sub = host.replace(".ashbyhq.com", "")
+        if sub == "jobs":
+            m = re.match(r"^/([^/]+)/", path)
+            if m:
+                return m.group(1).replace("-", " ").replace("_", " ")
+        else:
+            return sub.replace("-", " ").replace("_", " ")
+
+    # <company>.myworkdayjobs.com/...
+    if host.endswith(".myworkdayjobs.com"):
+        sub = host.replace(".myworkdayjobs.com", "")
+        # often "<company>.wd1.myworkdayjobs.com" — strip wdN.
+        sub = re.sub(r"\.wd\d+$", "", sub)
+        return sub.replace("-", " ").replace("_", " ")
+
+    # apply.workable.com/<company>/... or <company>.workable.com
+    if host == "apply.workable.com":
+        m = re.match(r"^/([^/]+)/", path)
+        if m:
+            return m.group(1).replace("-", " ").replace("_", " ")
+
+    # jobs.smartrecruiters.com/<company>/...
+    if host.endswith("smartrecruiters.com"):
+        m = re.match(r"^/([^/]+)/", path)
+        if m:
+            return m.group(1).replace("-", " ").replace("_", " ")
+
+    return ""
+
+
+async def validate_urls(urls: list[str], concurrency: int = 8, timeout: float = 5.0) -> set[str]:
+    """Return the subset of URLs that respond OK (or with a non-fatal status).
+
+    Drops 404/410/451 and connection errors. Keeps 200/3xx and also 403/405
+    (bot-walls and HEAD-not-allowed are common false negatives)."""
+    bad_codes = {404, 410, 451}
+    sem = asyncio.Semaphore(concurrency)
+    good: set[str] = set()
+
+    async def check(client: httpx.AsyncClient, url: str) -> None:
+        async with sem:
+            try:
+                resp = await client.head(url, follow_redirects=True, timeout=timeout)
+                if resp.status_code in bad_codes:
+                    return
+                # Some sites reject HEAD with 4xx/5xx but serve GET fine. Try GET fallback.
+                if resp.status_code >= 400 and resp.status_code not in (403, 405, 429):
+                    resp = await client.get(url, follow_redirects=True, timeout=timeout)
+                    if resp.status_code in bad_codes:
+                        return
+                good.add(url)
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError):
+                return
+            except Exception:
+                # Unknown error — keep the URL rather than drop a real listing
+                good.add(url)
+
+    async with httpx.AsyncClient(headers={"User-Agent": "Mozilla/5.0 (compatible; ApplyNowBot/1.0)"}) as client:
+        await asyncio.gather(*(check(client, u) for u in urls))
+    return good
 
 
 def _parse_exa_job_title(page_title: str) -> tuple[str, str]:
@@ -104,9 +192,32 @@ async def search_jobs_exa(
 
         page_title = item.get("title", "")
         parsed_title, parsed_company = _parse_exa_job_title(page_title)
-
-        company = company_hint or parsed_company
+        url_company = _company_from_url(url)
         text = item.get("text", "") or ""
+
+        # Resolve company: trust URL-derived first, then title parse.
+        # Only fall back to company_hint when the URL/title actually backs it up.
+        candidates = [c for c in (url_company, parsed_company) if c]
+        company = ""
+        if candidates:
+            company = candidates[0]
+
+        if company_hint:
+            hint_match = any(companies_match(company_hint, c) for c in candidates)
+            if hint_match:
+                # Use the canonical hint name when we've confirmed the match
+                company = company_hint
+            elif candidates:
+                # We have a real company but it doesn't match the hint — drop it,
+                # otherwise we'd mislabel the posting.
+                continue
+            else:
+                # No signal either way — also drop, since the hint is unverified
+                continue
+
+        if not company:
+            # General search with no company info anywhere — skip
+            continue
 
         results.append({
             "external_id": url,

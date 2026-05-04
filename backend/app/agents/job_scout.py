@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from sqlalchemy import select
 
@@ -10,6 +11,7 @@ from app.models.resume import Resume
 from app.models.user import User, UserPreferences
 from app.services import job_api_client, quota
 from app.services.company_match import companies_match
+from app.services.job_api_client import validate_urls
 from app.services.email_service import new_jobs_digest_email, send_email
 from app.config import settings
 
@@ -24,14 +26,17 @@ _OUTREACH_RANK = {
 }
 
 _TITLE_LEVEL_GATES = [
-    ({"director", "vp", "vice president", "head of", "chief"}, 4),
-    ({"staff engineer", "staff software", "staff data", "staff ml", "principal engineer",
-      "principal software", "principal data", "principal product", "principal ml"}, 3),
-    ({"senior ", "sr. ", " sr ", "lead engineer", "lead developer",
-      "lead software", "lead data", "lead ml"}, 2),
+    # min_level the user must meet to NOT be filtered out
+    ({"director", "vp", " vice president", "head of", "chief", "cto", "ceo", "cfo"}, 5),
+    ({"staff ", "principal ", "fellow ", "architect", "manager", "mgr"}, 4),
+    ({"senior ", "sr. ", " sr ", "sr/staff", "lead "}, 3),
 ]
 
-_LEVEL_ORDER = {"entry": 0, "junior": 1, "mid": 2, "senior": 3, "staff": 4, "lead": 5}
+_LEVEL_ORDER = {"entry": 0, "junior": 1, "mid": 2, "senior": 3, "staff": 4, "lead": 4}
+
+_YOE_PATTERN = re.compile(r"(\d+)\s*\+?\s*(?:-\s*\d+\s*)?(?:years?|yrs?)\s+(?:of\s+)?(?:experience|exp)", re.IGNORECASE)
+
+_LEVEL_MAX_YOE = {"entry": 2, "junior": 3, "mid": 6, "senior": 9, "staff": 99, "lead": 99}
 
 
 def _experience_hard_rules(experience_level: str, employment_types: list[str]) -> str:
@@ -107,7 +112,10 @@ class JobScoutAgent(BaseAgent):
     @staticmethod
     def _passes_experience_filter(job: dict, experience_level: str, employment_types: list[str]) -> bool:
         title_lower = (job.get("title") or "").lower()
+        # pad with spaces so " senior " / " sr " word-boundary matches work for prefix titles
+        title_padded = f" {title_lower} "
         job_emp_type = (job.get("employment_type") or "").lower()
+        description = (job.get("description") or "").lower()
 
         seeking_internship = "internship" in (employment_types or [])
         is_internship = "intern" in title_lower or "internship" in job_emp_type
@@ -119,9 +127,19 @@ class JobScoutAgent(BaseAgent):
 
         user_level = _LEVEL_ORDER.get(experience_level or "mid", 2)
         for keywords, min_level in _TITLE_LEVEL_GATES:
-            if any(kw in title_lower for kw in keywords):
+            if any(kw in title_padded for kw in keywords):
                 if user_level < min_level:
                     return False
+
+        # YOE check from description: drop if any required YOE > user's max
+        max_yoe = _LEVEL_MAX_YOE.get(experience_level or "mid", 6)
+        for m in _YOE_PATTERN.finditer(description):
+            try:
+                required = int(m.group(1))
+            except ValueError:
+                continue
+            if required > max_yoe:
+                return False
         return True
 
     @staticmethod
@@ -188,11 +206,19 @@ Candidate profile:
 
 {hard_rules}
 
+ADDITIONAL HARD RULES (apply BEFORE scoring):
+- If the description mentions "X+ years" of experience and X exceeds the candidate's level cap, score 0.
+  Caps: entry≤2yr, junior≤3yr, mid≤6yr, senior≤9yr.
+- If the title strongly implies a higher level than the candidate (Staff, Principal, Director, VP, Manager,
+  Architect for non-staff users), score 0.
+- Do NOT inflate scores for adjacent-but-wrong roles. A "Sales Engineer" listing is not a match for a
+  "Software Engineer" candidate.
+
 Scoring:
-- 0.9–1.0: Perfect match (right role, right company, right level)
-- 0.7–0.89: Strong match
-- 0.6–0.69: Decent match, worth applying
-- Below 0.6: Skip (wrong level, wrong role, or excluded company)
+- 0.9–1.0: Perfect match (right role, right level, target company or strong fit)
+- 0.75–0.89: Strong match — clearly within YOE band, role aligns with target roles
+- 0.65–0.74: Decent match, worth applying
+- Below 0.65: Skip (wrong level, wrong role family, or excluded company)
 
 Job postings to score:
 {chr(10).join(candidate_lines)}
@@ -254,7 +280,7 @@ Return exactly this JSON format (one entry per posting):
                 reasoning += f" | Skill boost +0.05: {', '.join(list(matched_skills)[:3])}"
 
             final_score = min(1.0, base_score + boost)
-            if final_score < 0.6:
+            if final_score < 0.65:
                 continue
 
             results.append({**job, "match_score": final_score, "match_reasoning": reasoning})
@@ -345,6 +371,16 @@ Return exactly this JSON format (one entry per posting):
 
         if not unique:
             return {"summary": "No new job postings found", "jobs_found": 0}
+
+        # ── Validate URLs (drop dead links) ─────────────────────────────────
+        await self._update_progress(f"Validating {len(unique)} URLs")
+        urls_to_check = [c["url"] for c in unique if c.get("url")]
+        good_urls = await validate_urls(urls_to_check)
+        unique = [c for c in unique if c.get("url") in good_urls]
+        logger.info("Job Scout: %d candidates after URL validation", len(unique))
+
+        if not unique:
+            return {"summary": "No reachable job postings found", "jobs_found": 0}
 
         # ── Score ───────────────────────────────────────────────────────────
         await self._update_progress(f"Scoring {len(unique)} candidates")
