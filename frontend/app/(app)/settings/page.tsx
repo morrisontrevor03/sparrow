@@ -199,45 +199,49 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Company criteria — seamlessly integrated */}
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-zinc-400">
-            Funding stage
-            <span className="ml-1.5 font-normal text-zinc-600">optional</span>
-          </label>
-          <div className="flex flex-wrap gap-3">
-            {FUNDING_STAGES.map((stage) => {
-              const selected = (form.company_stages ?? []).includes(stage);
-              const toggle = () => {
-                const current = form.company_stages ?? [];
-                update({ company_stages: selected ? current.filter((s) => s !== stage) : [...current, stage] });
-              };
-              return (
-                <label key={stage} className="flex items-center gap-2 cursor-pointer group">
-                  <div className="relative">
-                    <input type="checkbox" checked={selected} onChange={toggle} className="sr-only" />
-                    <div className={`h-4 w-4 rounded border transition-colors ${selected ? "bg-white border-white" : "border-white/20 bg-white/5 group-hover:border-white/40"}`}>
-                      {selected && (
-                        <svg viewBox="0 0 10 8" className="w-full h-full p-0.5" fill="none">
-                          <path d="M1 4l3 3 5-6" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-xs text-zinc-300 group-hover:text-zinc-100 transition-colors">{stage}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
+        {/* Funding stage & Industries — hidden, not deleted (not working for upcoming release) */}
+        {false && (
+          <>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-400">
+                Funding stage
+                <span className="ml-1.5 font-normal text-zinc-600">optional</span>
+              </label>
+              <div className="flex flex-wrap gap-3">
+                {FUNDING_STAGES.map((stage) => {
+                  const selected = (form.company_stages ?? []).includes(stage);
+                  const toggle = () => {
+                    const current = form.company_stages ?? [];
+                    update({ company_stages: selected ? current.filter((s) => s !== stage) : [...current, stage] });
+                  };
+                  return (
+                    <label key={stage} className="flex items-center gap-2 cursor-pointer group">
+                      <div className="relative">
+                        <input type="checkbox" checked={selected} onChange={toggle} className="sr-only" />
+                        <div className={`h-4 w-4 rounded border transition-colors ${selected ? "bg-white border-white" : "border-white/20 bg-white/5 group-hover:border-white/40"}`}>
+                          {selected && (
+                            <svg viewBox="0 0 10 8" className="w-full h-full p-0.5" fill="none">
+                              <path d="M1 4l3 3 5-6" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-zinc-300 group-hover:text-zinc-100 transition-colors">{stage}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
 
-        <TagInput
-          label="Industries"
-          optional
-          items={form.company_industries ?? []}
-          onChange={(v) => update({ company_industries: v })}
-          placeholder="e.g. AI/ML, Fintech, Healthtech"
-        />
+            <TagInput
+              label="Industries"
+              optional
+              items={form.company_industries ?? []}
+              onChange={(v) => update({ company_industries: v })}
+              placeholder="e.g. AI/ML, Fintech, Healthtech"
+            />
+          </>
+        )}
 
         <Divider />
 
