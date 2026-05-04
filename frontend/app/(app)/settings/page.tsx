@@ -119,8 +119,9 @@ function BillingTab({ stats }: { stats: DashboardStats | undefined }) {
     try {
       const { url } = await stripeApi.billingPortal();
       window.location.href = url;
-    } catch {
-      toast.error("Could not open billing portal — please try again");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      toast.error(`Billing portal error: ${msg}`);
     } finally {
       setPortalLoading(false);
     }
