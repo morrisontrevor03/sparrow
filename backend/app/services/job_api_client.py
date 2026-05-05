@@ -253,7 +253,7 @@ async def search_jobs_exa(
                     "type": "neural",
                     "numResults": min(max_results, 10),
                     "includeDomains": _JOB_DOMAINS,
-                    "contents": {"text": {"maxCharacters": 800}},
+                    "contents": {"text": {"maxCharacters": 3000}},
                 },
             )
             resp.raise_for_status()
@@ -317,7 +317,7 @@ async def search_jobs_exa(
             "title": parsed_title,
             "company": company,
             "location": "",
-            "description": text[:800],
+            "description": text[:3000],
             "url": url,
             "salary_min": None,
             "salary_max": None,

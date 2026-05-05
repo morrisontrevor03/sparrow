@@ -32,23 +32,49 @@ _TITLE_LEVEL_GATES = [
     ({"senior ", "sr. ", " sr ", "sr/staff", "lead "}, 3),
 ]
 
-_LEVEL_ORDER = {"entry": 0, "junior": 1, "mid": 2, "senior": 3, "staff": 4, "lead": 4}
+_LEVEL_ORDER = {"new_grad": 0, "entry": 0, "junior": 1, "mid": 2, "senior": 3, "staff": 4, "lead": 4}
 
-# Catches "5+ years of experience", "5 yrs experience", "3-5 years experience",
-# and "5+ years of <adjective(s)> experience" (e.g. "5+ years of software engineering experience").
-_YOE_PATTERN = re.compile(
-    r"(\d+)\s*\+?\s*(?:to\s*\d+\s*|-\s*\d+\s*)?(?:years?|yrs?)(?:\s+\w+){0,5}?\s+(?:experience|exp)\b",
-    re.IGNORECASE,
-)
-# Catches "minimum 3 years", "at least 5 years", "requires 4+ years"
-_YOE_MIN_PATTERN = re.compile(
-    r"(?:minimum|at\s+least|requires?|min\.?)\s+(?:of\s+)?(\d+)\s*\+?\s*(?:years?|yrs?)",
-    re.IGNORECASE,
-)
+# Catches YOE phrases — captures lower bound (group 1) AND optional upper bound (group 2)
+# so we can reject ranges like "1-5 years" that pass a lower-only check but really mean senior.
+# Examples:
+#   "5+ years of experience" → (5, None)
+#   "3-5 years experience"   → (3, 5)
+#   "3 to 5 years of experience" → (3, 5)
+#   "5+ years of software engineering experience" → (5, None)
+_YOE_PATTERNS = [
+    re.compile(
+        r"(\d+)\s*\+?\s*(?:(?:to|-|–|—)\s*(\d+)\s*)?(?:years?|yrs?)(?:\s+\w+){0,5}?\s+(?:of\s+)?(?:experience|exp)\b",
+        re.IGNORECASE,
+    ),
+    # "minimum 3 years", "at least 5 years", "requires 4+ years", "over 5 years"
+    re.compile(
+        r"(?:minimum|at\s+least|requires?|min\.?|over)\s+(?:of\s+)?(\d+)\s*\+?\s*(?:(?:to|-|–|—)\s*(\d+)\s*)?(?:years?|yrs?)",
+        re.IGNORECASE,
+    ),
+    # "5+ YOE", "3-5 YOE"
+    re.compile(
+        r"(\d+)\s*\+?\s*(?:(?:to|-|–|—)\s*(\d+)\s*)?\s*yoe\b",
+        re.IGNORECASE,
+    ),
+]
 
-# Strict cap on required YOE the user can accept. A posting demanding >= this
-# many years is rejected. Tracks the level's typical YOE upper bound + 1.
-_LEVEL_MAX_YOE = {"entry": 2, "junior": 4, "mid": 6, "senior": 10, "staff": 99, "lead": 99}
+# Maximum acceptable LOWER bound (the job's minimum required years).
+# A posting demanding >= this many years is rejected.
+_LEVEL_MAX_LOWER = {
+    "new_grad": 1, "entry": 2, "junior": 4, "mid": 6, "senior": 10, "staff": 99, "lead": 99,
+}
+# Maximum acceptable UPPER bound (the "ideally up to" end of a range).
+# Catches deceptive ranges like "1-5 years" where the lower bound passes but the
+# role is really aimed higher. > this → reject.
+_LEVEL_MAX_UPPER = {
+    "new_grad": 2, "entry": 3, "junior": 6, "mid": 8, "senior": 15, "staff": 99, "lead": 99,
+}
+
+# For new_grad, reject titles that imply any level above I/Associate.
+_NEW_GRAD_TITLE_BLOCK = (
+    " ii ", " iii ", " iv ", " v ", " 2 ", " 3 ", " 4 ", " 5 ",
+    "experienced", "mid-level", "mid level", " mid ",
+)
 
 
 def _experience_hard_rules(experience_level: str, employment_types: list[str]) -> str:
@@ -65,6 +91,14 @@ def _experience_hard_rules(experience_level: str, employment_types: list[str]) -
         ]
 
     level_rules = {
+        "new_grad": [
+            "- NEW GRAD (0 YOE, currently a student or just graduated). Score 0 if ANY of these are true:",
+            "    * title contains Senior/Sr/Staff/Principal/Lead/Manager/Director/VP/Chief/Architect/'II'/'III'/'IV'/'2'/'3'/'4'/Experienced/Mid",
+            "    * description requires 1+ YOE (any wording: '1+ years', 'minimum 1 year', 'at least 1 year', '1 YOE')",
+            "    * description mentions a year range whose UPPER bound is > 2 (e.g. '0-3 years', '1-5 years' are NOT new-grad-friendly)",
+            "    * description requires a graduate degree, PhD, or specific years of post-degree experience",
+            "  Acceptable phrasing: '0 years', '0-1 years', '0-2 years', 'recent graduate', 'new grad', 'no experience required', 'entry-level'.",
+        ],
         "entry": [
             "- ENTRY LEVEL (0–1 YOE). Score 0 if title contains Senior/Staff/Principal/Lead/Manager/Director/VP/Chief OR requires 2+ YOE.",
         ],
@@ -143,18 +177,35 @@ class JobScoutAgent(BaseAgent):
                 if user_level < min_level:
                     return False
 
-        # YOE check from description: drop if any required YOE >= user's max.
-        # >= matters: a job saying "2+ years" requires 2 or more, which an
-        # entry-level (0–1 YOE) candidate doesn't have.
-        max_yoe = _LEVEL_MAX_YOE.get(experience_level or "mid", 6)
-        for pattern in (_YOE_PATTERN, _YOE_MIN_PATTERN):
+        # New-grad-only title block: levels like "Engineer II", "SWE 3", "Mid Engineer"
+        # all imply someone with prior experience.
+        if experience_level == "new_grad":
+            if any(kw in title_padded for kw in _NEW_GRAD_TITLE_BLOCK):
+                return False
+
+        # YOE check from description. Reject if EITHER bound exceeds the user's caps:
+        #   - lower bound >= max_lower → job's minimum exceeds what user has
+        #   - upper bound  >  max_upper → range targets someone above user's level
+        # The upper-bound check catches deceptive ranges like "1-5 years" where the
+        # lower bound passes but the role is really aimed at a senior candidate.
+        max_lower = _LEVEL_MAX_LOWER.get(experience_level or "mid", 6)
+        max_upper = _LEVEL_MAX_UPPER.get(experience_level or "mid", 8)
+        for pattern in _YOE_PATTERNS:
             for m in pattern.finditer(description):
                 try:
-                    required = int(m.group(1))
-                except ValueError:
+                    lower = int(m.group(1))
+                except (ValueError, IndexError, TypeError):
                     continue
-                if required >= max_yoe:
+                if lower >= max_lower:
                     return False
+                upper_str = m.group(2) if m.lastindex and m.lastindex >= 2 else None
+                if upper_str:
+                    try:
+                        upper = int(upper_str)
+                    except ValueError:
+                        continue
+                    if upper > max_upper:
+                        return False
         return True
 
     @staticmethod
@@ -222,12 +273,17 @@ Candidate profile:
 {hard_rules}
 
 ADDITIONAL HARD RULES (apply BEFORE scoring):
-- If the description mentions "X+ years" / "minimum X years" / "at least X years" of experience and the
-  candidate doesn't meet X, score 0. Required years the candidate CANNOT meet:
+- If the description mentions "X+ years" / "minimum X years" / "at least X years" / "X-Y years" of
+  experience and the candidate doesn't meet X (or the range upper bound Y exceeds the candidate's level),
+  score 0. Required years the candidate CANNOT meet:
+  new_grad: 1+ years required OR range upper > 2 → 0 (e.g. "1-5 years" is NOT a new-grad role).
   entry: 2+ years required → 0. junior: 4+ years required → 0. mid: 6+ years required → 0.
   senior: 10+ years required → 0.
 - If the title strongly implies a higher level than the candidate (Staff, Principal, Director, VP, Manager,
-  Architect for non-staff users), score 0.
+  Architect for non-staff users; II/III/IV/2/3/4/Mid/Experienced for new_grad users), score 0.
+- For new_grad: only score > 0 when the listing explicitly invites recent graduates, students, or 0-YOE
+  applicants. If the listing is silent on YOE but the title says "Software Engineer" (no level marker),
+  that is acceptable — but anything implying prior experience is a 0.
 - Do NOT inflate scores for adjacent-but-wrong roles. A "Sales Engineer" listing is not a match for a
   "Software Engineer" candidate.
 

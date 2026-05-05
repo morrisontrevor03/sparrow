@@ -241,19 +241,19 @@ function StepTargets({
 
       <div className="space-y-2">
         <label className="text-xs font-medium text-zinc-400">Experience level</label>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {["entry", "junior", "mid", "senior", "staff", "lead"].map((lvl) => (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-7">
+          {["new_grad", "entry", "junior", "mid", "senior", "staff", "lead"].map((lvl) => (
             <button
               key={lvl}
               type="button"
               onClick={() => update({ experience_level: state.experience_level === lvl ? "" : lvl })}
-              className={`rounded-lg border py-2 text-xs font-medium capitalize transition-all ${
+              className={`rounded-lg border py-2 text-xs font-medium transition-all ${
                 state.experience_level === lvl
                   ? "border-white/40 bg-white/10 text-white"
                   : "border-white/8 bg-white/3 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
               }`}
             >
-              {lvl}
+              {lvl === "new_grad" ? "New Grad" : lvl.charAt(0).toUpperCase() + lvl.slice(1)}
             </button>
           ))}
         </div>

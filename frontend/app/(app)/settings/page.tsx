@@ -483,8 +483,8 @@ export default function SettingsPage() {
                   className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-white/20"
                 >
                   <option value="">Any</option>
-                  {["entry", "junior", "mid", "senior", "staff", "lead"].map((l) => (
-                    <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
+                  {["new_grad", "entry", "junior", "mid", "senior", "staff", "lead"].map((l) => (
+                    <option key={l} value={l}>{l === "new_grad" ? "New Grad" : l.charAt(0).toUpperCase() + l.slice(1)}</option>
                   ))}
                 </select>
               </div>
