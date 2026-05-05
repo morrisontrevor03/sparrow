@@ -3,11 +3,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { stripe } from "@/lib/api";
-import { Check, Zap, Heart, Eye, Shield } from "lucide-react";
+import { Check, Heart, Eye, Shield } from "lucide-react";
 import { track } from "@/lib/posthog";
 
 const FREE_FEATURES = [
-  "7-day Networking Sprint included",
   "Up to 10 contacts / month",
   "Up to 10 jobs / month",
   "3 sets of tailored materials / month",
@@ -67,9 +66,18 @@ export default function PricingPage() {
       <header className="border-b border-white/[0.06] backdrop-blur-xl backdrop-saturate-150 sticky top-0 z-40 bg-zinc-950/60">
         <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10">
-              <Zap className="h-4 w-4 text-white" />
-            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" fill="none" className="h-7 w-7">
+              <defs>
+                <linearGradient id="pricing-bg" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#1a3320"/>
+                  <stop offset="1" stopColor="#0d1f11"/>
+                </linearGradient>
+              </defs>
+              <rect width="28" height="28" rx="7" fill="url(#pricing-bg)"/>
+              <rect x="4"  y="17"   width="11" height="4" rx="2" fill="white" fillOpacity="0.35"/>
+              <rect x="8"  y="11.5" width="11" height="4" rx="2" fill="white" fillOpacity="0.65"/>
+              <rect x="12" y="6"    width="11" height="4" rx="2" fill="white" fillOpacity="1"/>
+            </svg>
             <span className="text-sm font-semibold">ApplyNow</span>
           </Link>
           <div className="flex items-center gap-3">
@@ -102,16 +110,10 @@ export default function PricingPage() {
         <div className="grid gap-5 sm:grid-cols-2 mb-20">
           {/* Free */}
           <div className="rounded-2xl border border-white/8 bg-white/3 p-7 flex flex-col">
-            <div className="mb-5">
+            <div className="mb-6">
               <p className="text-sm font-medium text-zinc-400 mb-1">Free</p>
               <p className="text-3xl font-bold">$0</p>
               <p className="text-xs text-zinc-500 mt-1">Forever</p>
-            </div>
-            <div className="mb-5 rounded-xl bg-white/5 border border-white/10 px-4 py-3">
-              <p className="text-xs font-semibold text-zinc-200 mb-0.5">7-day Networking Sprint</p>
-              <p className="text-xs text-zinc-500 leading-relaxed">
-                7 days to go from cold applying to warm intros — pick companies, surface contacts, send messages, apply.
-              </p>
             </div>
             <ul className="space-y-2.5 flex-1 mb-8">
               {FREE_FEATURES.map((f) => (
@@ -123,10 +125,10 @@ export default function PricingPage() {
             </ul>
             <Link
               href="/register"
-              onClick={() => track("free_sprint_started", { source: "pricing_free_cta" })}
+              onClick={() => track("signup_started", { source: "pricing_free_cta" })}
               className="block text-center rounded-xl border border-white/10 px-5 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-white/5 transition-colors"
             >
-              Start your Sprint →
+              Get started free
             </Link>
           </div>
 

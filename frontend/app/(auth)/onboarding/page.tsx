@@ -7,11 +7,10 @@ import {
   Zap, ChevronRight, Check, Upload, FileText,
   Sparkles, Users, Briefcase, Building2,
 } from "lucide-react";
+
 import { track } from "@/lib/posthog";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-
-type VibeKey = "startup" | "corporate" | "small_business" | "remote";
 
 interface OnboardingState {
   resume_uploaded: boolean;
@@ -21,8 +20,6 @@ interface OnboardingState {
   target_locations: string[];
   location_flexible: boolean;
   target_companies: string[];
-  work_environment: VibeKey[];
-  company_stages: string[];
 }
 
 const INITIAL: OnboardingState = {
@@ -33,20 +30,9 @@ const INITIAL: OnboardingState = {
   target_locations: [],
   location_flexible: true,
   target_companies: [],
-  work_environment: [],
-  company_stages: [],
 };
 
 const STEPS = ["Resume", "Targets", "Companies", "Launch"] as const;
-
-const FUNDING_STAGES = ["Pre-seed", "Seed", "Series A", "Series B", "Series C+", "Public"] as const;
-
-const VIBES: Array<{ key: VibeKey; label: string; emoji: string }> = [
-  { key: "startup", label: "Startup", emoji: "🚀" },
-  { key: "corporate", label: "Corporate", emoji: "🏢" },
-  { key: "small_business", label: "Small business", emoji: "🏪" },
-  { key: "remote", label: "Remote-first", emoji: "🌍" },
-];
 
 // ── Shared ─────────────────────────────────────────────────────────────────
 
@@ -300,93 +286,23 @@ function StepCompanies({
   state: OnboardingState;
   update: (patch: Partial<OnboardingState>) => void;
 }) {
-  const toggleVibe = (key: VibeKey) => {
-    const cur = state.work_environment;
-    update({ work_environment: cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key] });
-  };
-  const toggleStage = (stage: string) => {
-    const cur = state.company_stages;
-    update({ company_stages: cur.includes(stage) ? cur.filter((s) => s !== stage) : [...cur, stage] });
-  };
-
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Which companies interest you?</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          Add specific names, pick a type, or both. Aim for 5–10 for best results.
+          Aim for 5–10 for best networking results.
         </p>
       </div>
 
-      <div className="space-y-2">
-        <label className="text-xs font-medium text-zinc-400">Specific companies</label>
-        <TagInput
-          items={state.target_companies}
-          onChange={(v) => update({ target_companies: v })}
-          placeholder="e.g. Stripe, Figma, Airbnb"
-        />
-        {state.target_companies.length > 0 && state.target_companies.length < 5 && (
-          <p className="text-[11px] text-zinc-500">Add {5 - state.target_companies.length} more for best networking results</p>
-        )}
-      </div>
-
-      <div className="relative flex items-center gap-3">
-        <div className="h-px flex-1 bg-white/8" />
-        <span className="text-xs text-zinc-600">or narrow by type</span>
-        <div className="h-px flex-1 bg-white/8" />
-      </div>
-
-      <div className="space-y-3">
-        <label className="text-xs font-medium text-zinc-400">Company vibe</label>
-        <div className="grid grid-cols-2 gap-2">
-          {VIBES.map((v) => {
-            const selected = state.work_environment.includes(v.key);
-            return (
-              <button
-                key={v.key}
-                type="button"
-                onClick={() => toggleVibe(v.key)}
-                className={`relative flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${
-                  selected
-                    ? "border-white/40 bg-white/10"
-                    : "border-white/8 bg-white/3 hover:border-white/20"
-                }`}
-              >
-                {selected && (
-                  <span className="absolute right-2.5 top-2.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white">
-                    <Check className="h-2 w-2 text-zinc-900" />
-                  </span>
-                )}
-                <span className="text-base">{v.emoji}</span>
-                <span className="text-xs font-medium text-zinc-200">{v.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-xs font-medium text-zinc-400">Funding stage</label>
-        <div className="flex flex-wrap gap-2">
-          {FUNDING_STAGES.map((stage) => {
-            const selected = state.company_stages.includes(stage);
-            return (
-              <button
-                key={stage}
-                type="button"
-                onClick={() => toggleStage(stage)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                  selected
-                    ? "border-white/40 bg-white/10 text-white"
-                    : "border-white/8 bg-white/3 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
-                }`}
-              >
-                {stage}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <TagInput
+        items={state.target_companies}
+        onChange={(v) => update({ target_companies: v })}
+        placeholder="e.g. Stripe, Figma, Airbnb"
+      />
+      {state.target_companies.length > 0 && state.target_companies.length < 5 && (
+        <p className="text-[11px] text-zinc-500">Add {5 - state.target_companies.length} more for best networking results</p>
+      )}
     </div>
   );
 }
@@ -402,11 +318,9 @@ function StepLaunch({
   onLaunch: () => void;
   launching: boolean;
 }) {
-  const companyDesc = [
-    state.target_companies.length > 0 && `${state.target_companies.length} specific`,
-    state.work_environment.length > 0 && state.work_environment.join(", "),
-    state.company_stages.length > 0 && state.company_stages.join(", "),
-  ].filter(Boolean).join(" · ") || "None specified — agents will cast wide";
+  const companyDesc = state.target_companies.length > 0
+    ? state.target_companies.slice(0, 3).join(", ") + (state.target_companies.length > 3 ? ` +${state.target_companies.length - 3}` : "")
+    : "None specified — agents will cast wide";
 
   const summaryItems = [
     {
@@ -513,8 +427,6 @@ export default function OnboardingPage() {
         target_locations: state.target_locations,
         location_flexible: state.location_flexible,
         target_companies: state.target_companies,
-        work_environment: state.work_environment,
-        company_stages: state.company_stages,
       });
       track("first_run_triggered", { roles: state.target_roles.length, companies: state.target_companies.length });
       await Promise.allSettled([agents.runJobScout(), agents.runNetworking()]);
