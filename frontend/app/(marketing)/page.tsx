@@ -4,8 +4,20 @@ import { BriefcaseBusiness, Users, FileCheck } from "lucide-react";
 function LogoMark() {
   return (
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="shrink-0">
-      <rect width="28" height="28" rx="7" fill="oklch(0.85 0.18 145 / 0.10)" stroke="oklch(0.85 0.18 145 / 0.22)" strokeWidth="1" />
-      <path d="M9 19L19 9M13.5 9H19V14.5" stroke="oklch(0.85 0.18 145)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <defs>
+        <linearGradient id="mkt-logo-bg" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1e2b1e" />
+          <stop offset="1" stopColor="#111911" />
+        </linearGradient>
+      </defs>
+      <rect width="28" height="28" rx="7" fill="url(#mkt-logo-bg)" />
+      <path
+        d="M8.5 21L14 8L19.5 21M11 16.5H17"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
