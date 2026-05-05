@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     # Analytics
     posthog_api_key: str = ""
+    posthog_host: str = "https://us.i.posthog.com"
 
     # App
     backend_url: str = "http://localhost:8000"
@@ -56,9 +57,9 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     # Plan limits
-    free_jobs_per_month: int = 5
-    free_contacts_per_month: int = 3
-    free_agent_runs_per_month: int = 3
+    free_jobs_per_month: int = 10
+    free_contacts_per_month: int = 10
+    free_agent_runs_per_month: int = 5
 
 
 settings = Settings()

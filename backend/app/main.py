@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import engine
 from app.database import Base
 from app.scheduler.jobs import register_jobs, scheduler
+from app.analytics import init_posthog, shutdown_posthog
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ def _validate_env() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _validate_env()
+    init_posthog()
 
     # Create upload directory
     os.makedirs(settings.upload_dir, exist_ok=True)
@@ -68,6 +70,7 @@ async def lifespan(app: FastAPI):
 
     scheduler.shutdown()
     logger.info("Scheduler stopped")
+    shutdown_posthog()
     await engine.dispose()
 
 

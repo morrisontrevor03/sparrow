@@ -7,9 +7,9 @@ import { Check, Zap, Heart, Eye, Shield } from "lucide-react";
 import { track } from "@/lib/posthog";
 
 const FREE_FEATURES = [
-  "3 Job Scout runs / month",
-  "3 Networking runs / month",
-  "3 Application drafts / month",
+  "7-day Networking Sprint included",
+  "10 contacts surfaced / month",
+  "5 agent runs / month (Scout, Network, Draft)",
   "Email alerts for high-match jobs",
 ];
 
@@ -101,10 +101,16 @@ export default function PricingPage() {
         <div className="grid gap-5 sm:grid-cols-2 mb-20">
           {/* Free */}
           <div className="rounded-2xl border border-white/8 bg-white/3 p-7 flex flex-col">
-            <div className="mb-6">
+            <div className="mb-5">
               <p className="text-sm font-medium text-zinc-400 mb-1">Free</p>
               <p className="text-3xl font-bold">$0</p>
               <p className="text-xs text-zinc-500 mt-1">Forever</p>
+            </div>
+            <div className="mb-5 rounded-xl bg-white/5 border border-white/10 px-4 py-3">
+              <p className="text-xs font-semibold text-zinc-200 mb-0.5">7-day Networking Sprint</p>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                7 days to go from cold applying to warm intros — pick companies, surface contacts, send messages, apply.
+              </p>
             </div>
             <ul className="space-y-2.5 flex-1 mb-8">
               {FREE_FEATURES.map((f) => (
@@ -116,10 +122,10 @@ export default function PricingPage() {
             </ul>
             <Link
               href="/register"
-              onClick={() => track("paywall_viewed", { source: "pricing_free_cta" })}
+              onClick={() => track("free_sprint_started", { source: "pricing_free_cta" })}
               className="block text-center rounded-xl border border-white/10 px-5 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-white/5 transition-colors"
             >
-              Get started free
+              Start your Sprint →
             </Link>
           </div>
 
