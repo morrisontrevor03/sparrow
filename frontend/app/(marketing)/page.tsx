@@ -11,13 +11,6 @@ function LogoMark() {
         </linearGradient>
       </defs>
       <rect width="28" height="28" rx="7" fill="url(#mkt-logo-bg)" />
-      <path
-        d="M8.5 21L14 8L19.5 21M11 16.5H17"
-        stroke="white"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }
