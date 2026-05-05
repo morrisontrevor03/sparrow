@@ -98,6 +98,14 @@ function ContactRow({
     mutationFn: (data: Partial<Contact>) => contactsApi.update(contact.id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["contacts"] }),
   });
+  const deleteContact = useMutation({
+    mutationFn: () => contactsApi.delete(contact.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      toast.success("Contact removed");
+    },
+    onError: () => toast.error("Failed to remove contact"),
+  });
 
   const stage = stageConfig(contact.outreach_status);
   const score = contact.relevance_score ?? 0;
@@ -146,7 +154,7 @@ function ContactRow({
       </div>
 
       {/* Quick actions */}
-      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-end gap-1 w-24 shrink-0" onClick={(e) => e.stopPropagation()}>
         {contact.outreach_message && (
           <button
             onClick={() => {
@@ -170,7 +178,15 @@ function ContactRow({
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         )}
-        <ChevronRight className="h-3.5 w-3.5 text-zinc-700 group-hover:text-zinc-400 transition-colors" />
+        <ChevronRight className="h-3.5 w-3.5 text-zinc-700 group-hover:text-zinc-400 transition-colors shrink-0" />
+        <button
+          onClick={() => deleteContact.mutate()}
+          disabled={deleteContact.isPending}
+          className="p-1.5 text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-30"
+          title="Remove contact"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
@@ -603,7 +619,7 @@ export default function NetworkingPage() {
           <p className="text-zinc-400 text-sm">No contacts yet.</p>
           {hasCompletedNetworkingRun ? (
             <p className="text-zinc-500 text-xs mt-1">
-              No matches found — try adding more target companies or expanding your role in{" "}
+              No matches found. Try adding more target companies or expanding your role in{" "}
               <Link href="/settings" className="underline underline-offset-2 hover:text-zinc-300">
                 Settings
               </Link>.
@@ -638,7 +654,7 @@ export default function NetworkingPage() {
             <select
               value={companyFilter}
               onChange={(e) => setCompanyFilter(e.target.value)}
-              className="rounded-lg border border-white/8 bg-white/5 px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-white/20"
+              className="rounded-lg border border-white/8 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-white/20"
             >
               <option value="">All companies</option>
               {companies.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -653,7 +669,7 @@ export default function NetworkingPage() {
               <div className="w-36 shrink-0 hidden sm:block text-xs font-medium text-zinc-500">Company</div>
               <div className="shrink-0 hidden md:block text-xs font-medium text-zinc-500 w-16">Score</div>
               <div className="shrink-0 text-xs font-medium text-zinc-500 w-28">Stage</div>
-              <div className="shrink-0 w-20" />
+              <div className="shrink-0 w-24" />
             </div>
 
             {filtered.length === 0 ? (

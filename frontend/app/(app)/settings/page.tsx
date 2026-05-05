@@ -97,10 +97,12 @@ function Toggle({ label, checked, onChange, description }: { label: string; chec
         {description && <p className="text-xs text-zinc-500 mt-0.5">{description}</p>}
       </div>
       <button
+        role="switch"
+        aria-checked={checked}
         onClick={() => onChange(!checked)}
-        className={`relative h-5 w-9 rounded-full transition-colors shrink-0 ${checked ? "bg-white" : "bg-white/15"}`}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${checked ? "bg-white" : "bg-white/15"}`}
       >
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-zinc-900 transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
+        <span className={`inline-block h-4 w-4 rounded-full bg-zinc-900 shadow-sm transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`} />
       </button>
     </div>
   );
@@ -133,7 +135,7 @@ function BillingTab({ stats }: { stats: DashboardStats | undefined }) {
       const { url } = await stripeApi.createCheckout();
       window.location.href = url;
     } catch {
-      toast.error("Could not start checkout — please try again");
+      toast.error("Could not start checkout. Please try again");
     } finally {
       setCheckoutLoading(false);
     }
@@ -231,7 +233,7 @@ export default function SettingsPage() {
       update({ target_companies: merged });
       toast.success(`Added ${merged.length - seeds.length} companies`);
     } catch {
-      toast.error("Autocomplete failed — please try again");
+      toast.error("Autocomplete failed. Please try again");
     } finally {
       setAutocompleteLoading(false);
     }
@@ -480,7 +482,7 @@ export default function SettingsPage() {
                 <select
                   value={form.experience_level ?? ""}
                   onChange={(e) => update({ experience_level: e.target.value || null })}
-                  className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-white/20"
+                  className="w-full rounded-lg border border-white/8 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-white/20"
                 >
                   <option value="">Any</option>
                   {["new_grad", "entry", "junior", "mid", "senior", "staff", "lead"].map((l) => (

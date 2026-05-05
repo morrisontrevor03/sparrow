@@ -1,24 +1,33 @@
 import Link from "next/link";
-import { Zap, BriefcaseBusiness, Users, FileCheck } from "lucide-react";
+import { BriefcaseBusiness, Users, FileCheck } from "lucide-react";
+
+function LogoMark() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="shrink-0">
+      <rect width="28" height="28" rx="7" fill="oklch(0.85 0.18 145 / 0.10)" stroke="oklch(0.85 0.18 145 / 0.22)" strokeWidth="1" />
+      <path d="M9 19L19 9M13.5 9H19V14.5" stroke="oklch(0.85 0.18 145)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 const features = [
   {
     icon: BriefcaseBusiness,
-    title: "Job Scout — 24/7",
+    title: "Job Scout",
     description:
-      "AI agents scan thousands of job boards every 30 minutes and email you the moment a high-match posting appears — before most people even see it.",
+      "AI agents scan thousands of job boards around the clock and alert you the moment a high-match posting appears, before most candidates even see it.",
   },
   {
     icon: Users,
     title: "Strategic Networking",
     description:
-      "Automatically finds the right people at your target companies — hiring managers, staff engineers, recruiters — and drafts a personalized coffee chat message for each one.",
+      "Automatically finds the right people at your target companies, hiring managers, staff engineers, and recruiters, then drafts a personalized coffee chat message for each one.",
   },
   {
     icon: FileCheck,
     title: "Instant Application Drafts",
     description:
-      "For every strong match, Claude tailors your resume bullets and writes a cover letter. You get a draft in your inbox within minutes of the job posting going live.",
+      "For every strong match, your resume and cover letter are automatically tailored to the role. You get a polished draft in your inbox within minutes of the posting going live.",
   },
 ];
 
@@ -29,9 +38,7 @@ export default function LandingPage() {
       <header className="border-b border-white/[0.06] backdrop-blur-xl backdrop-saturate-150 sticky top-0 z-40 bg-zinc-950/60">
         <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10">
-              <Zap className="h-4 w-4 text-white" />
-            </div>
+            <LogoMark />
             <span className="text-sm font-semibold">ApplyNow</span>
           </div>
           <div className="flex items-center gap-3">
@@ -67,7 +74,7 @@ export default function LandingPage() {
           </h1>
           <p className="text-lg text-zinc-400 leading-relaxed mb-10 max-w-xl mx-auto">
             ApplyNow runs AI agents around the clock to find jobs, build your network,
-            and draft tailored applications — so you respond before anyone else.
+            and draft tailored applications so you respond before anyone else.
           </p>
           <div className="flex items-center justify-center gap-3">
             <Link
@@ -105,7 +112,7 @@ export default function LandingPage() {
       <section className="mx-auto max-w-5xl px-6 pb-24">
         <div className="relative overflow-hidden rounded-2xl border border-white/8 bg-white/3 p-10 text-center grid-bg">
           <h2 className="text-2xl font-bold mb-3">Ready to get ahead?</h2>
-          <p className="text-zinc-400 text-sm mb-6">Start free — no credit card required.</p>
+          <p className="text-zinc-400 text-sm mb-6">Start free. No credit card required.</p>
           <Link
             href="/register"
             className="btn-primary inline-flex rounded-xl px-6 py-2.5 text-sm font-semibold"

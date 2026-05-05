@@ -2,8 +2,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Briefcase, Users, Upload, Settings, LogOut, Zap
+  LayoutDashboard, Briefcase, Users, Upload, Settings, LogOut,
 } from "lucide-react";
+
+function LogoMark() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="shrink-0">
+      <rect width="28" height="28" rx="7" fill="oklch(0.85 0.18 145 / 0.10)" stroke="oklch(0.85 0.18 145 / 0.22)" strokeWidth="1" />
+      <path d="M9 19L19 9M13.5 9H19V14.5" stroke="oklch(0.85 0.18 145)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -23,9 +32,7 @@ export function Sidebar() {
     <aside className="flex h-full w-56 flex-col border-r border-white/8 bg-zinc-950">
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 py-5 border-b border-white/8">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10">
-          <Zap className="h-4 w-4 text-white" />
-        </div>
+        <LogoMark />
         <span className="text-sm font-semibold tracking-tight">ApplyNow</span>
       </div>
 

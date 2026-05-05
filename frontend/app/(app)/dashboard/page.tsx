@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { dashboard, agents, DashboardStats, AgentRun } from "@/lib/api";
 import {
-  Briefcase, Users, FileText, Sparkles, Play,
+  Briefcase, Users, Sparkles, Play, X,
   CheckCircle2, XCircle, Loader2, Clock, AlertTriangle,
   Upload, Building2, Zap, Circle,
 } from "lucide-react";
@@ -35,7 +35,7 @@ function RunStatusIcon({ status }: { status: string }) {
   return <Loader2 className="h-3.5 w-3.5 text-zinc-400 animate-spin shrink-0" />;
 }
 
-function AgentRunRow({ run }: { run: AgentRun }) {
+function AgentRunRow({ run, onDismiss }: { run: AgentRun; onDismiss?: (id: string) => void }) {
   const label: Record<string, string> = {
     job_scout: "Job Scout",
     networking: "Networking",
@@ -73,13 +73,24 @@ function AgentRunRow({ run }: { run: AgentRun }) {
           <p className="text-xs text-zinc-500 mt-0.5">
             {results || (
               <Link href="/settings" className="underline underline-offset-2 hover:text-zinc-400">
-                No new results — adjust Settings
+                No new results. Adjust Settings
               </Link>
             )}
           </p>
         )}
       </div>
-      <span className="text-xs text-zinc-600 shrink-0">{when}</span>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="text-xs text-zinc-600">{when}</span>
+        {run.status === "running" && onDismiss && (
+          <button
+            onClick={() => onDismiss(run.id)}
+            className="p-1 text-zinc-700 hover:text-zinc-400 transition-colors"
+            title="Dismiss"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -134,7 +145,7 @@ function StartHereChecklist({ stats }: { stats: DashboardStats }) {
     {
       done: stats.resume_uploaded,
       label: "Upload your resume",
-      description: "Claude parses it and tailors it for every application",
+      description: "Parses and tailors it for every application automatically",
       href: "/resume",
       icon: Upload,
     },
@@ -186,6 +197,8 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const isFirstRun = searchParams.get("first_run") === "true";
   const [firstRunBannerDismissed, setFirstRunBannerDismissed] = useState(false);
+  const [dismissedRunIds, setDismissedRunIds] = useState<Set<string>>(new Set());
+  const dismissRun = (id: string) => setDismissedRunIds((prev) => new Set([...prev, id]));
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["dashboard-stats"],
@@ -210,7 +223,7 @@ function DashboardContent() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("402") || msg.toLowerCase().includes("limit reached")) {
-        toast.error("Monthly run limit reached — upgrade to Pro for unlimited runs");
+        toast.error("Monthly run limit reached. Upgrade to Pro for unlimited runs");
         track("paywall_viewed", { source: "agent_run_limit" });
       } else {
         toast.error(`Failed to start ${label}`);
@@ -277,9 +290,8 @@ function DashboardContent() {
       {stats && <StartHereChecklist stats={stats} />}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <StatCard label="Jobs Found" value={stats?.jobs_count ?? 0} icon={Briefcase} sub={`${stats?.new_jobs_count ?? 0} new`} />
-        <StatCard label="Drafts" value={stats?.applications_count ?? 0} icon={FileText} />
         <StatCard label="Contacts" value={stats?.contacts_count ?? 0} icon={Users} />
         <StatCard label="Plan" value={stats?.plan === "pro" ? "Pro" : "Free"} icon={Sparkles} />
       </div>
@@ -348,8 +360,8 @@ function DashboardContent() {
           <p className="text-sm text-zinc-500">No runs yet. Click a button above to trigger an agent manually.</p>
         ) : (
           <div>
-            {runs.slice(0, 15).map((run) => (
-              <AgentRunRow key={run.id} run={run} />
+            {runs.filter((r) => !dismissedRunIds.has(r.id)).slice(0, 15).map((run) => (
+              <AgentRunRow key={run.id} run={run} onDismiss={dismissRun} />
             ))}
           </div>
         )}

@@ -7,7 +7,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ApplyNow — AI Job Agent",
+  title: "ApplyNow: AI Job Agent",
   description: "24/7 AI agents that find jobs, draft applications, and build your network.",
 };
 

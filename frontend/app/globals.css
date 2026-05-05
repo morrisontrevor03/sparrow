@@ -124,6 +124,11 @@ body {
   border: 1px solid oklch(0.30 0.005 285);
 }
 
+/* Force native select dropdowns into dark mode */
+select {
+  color-scheme: dark;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

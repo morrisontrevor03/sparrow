@@ -1,8 +1,9 @@
 "use client";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { jobs, agents, applications, Job, AgentRun } from "@/lib/api";
-import { ExternalLink, X, MapPin, DollarSign, Loader2, Download } from "lucide-react";
+import { ExternalLink, X, MapPin, DollarSign, Loader2, Download, Play } from "lucide-react";
 import Link from "next/link";
 
 function MatchBadge({ score }: { score: number | null }) {
@@ -133,6 +134,8 @@ function JobCard({ job, onDismiss }: { job: Job; onDismiss: (id: string) => void
 
 export default function JobsPage() {
   const qc = useQueryClient();
+  const [scoutRunning, setScoutRunning] = useState(false);
+
   const { data = [], isLoading } = useQuery<Job[]>({
     queryKey: ["jobs"],
     queryFn: () => jobs.list(),
@@ -148,6 +151,24 @@ export default function JobsPage() {
     onError: () => toast.error("Failed to dismiss"),
   });
 
+  const runJobScout = async () => {
+    setScoutRunning(true);
+    try {
+      await agents.runJobScout();
+      toast.success("Job Scout started");
+      qc.invalidateQueries({ queryKey: ["agent-runs"] });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("402") || msg.toLowerCase().includes("limit reached")) {
+        toast.error("Monthly run limit reached. Upgrade to Pro for unlimited runs");
+      } else {
+        toast.error("Failed to start Job Scout");
+      }
+    } finally {
+      setScoutRunning(false);
+    }
+  };
+
   const hasCompletedScoutRun = runs?.some(
     (r) => r.agent_type === "job_scout" && r.status === "completed"
   );
@@ -161,6 +182,14 @@ export default function JobsPage() {
           <h1 className="text-xl font-semibold">Jobs</h1>
           <p className="text-sm text-zinc-400 mt-1">{data.length} job{data.length !== 1 ? "s" : ""} found</p>
         </div>
+        <button
+          onClick={runJobScout}
+          disabled={scoutRunning}
+          className="flex items-center gap-1.5 rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-white/10 hover:text-white disabled:opacity-50 transition-colors"
+        >
+          {scoutRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+          {scoutRunning ? "Starting…" : "Run Job Scout"}
+        </button>
       </div>
 
       {data.length === 0 ? (
@@ -177,8 +206,8 @@ export default function JobsPage() {
             </>
           ) : (
             <>
-              <p className="text-zinc-400 text-sm">No jobs yet. The Job Scout agent runs every 4 hours.</p>
-              <p className="text-zinc-500 text-xs mt-2">You can trigger it manually from the Dashboard.</p>
+              <p className="text-zinc-400 text-sm">No jobs yet.</p>
+              <p className="text-zinc-500 text-xs mt-2">Run Job Scout above or wait for the next scheduled run.</p>
             </>
           )}
         </div>
