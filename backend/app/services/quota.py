@@ -74,6 +74,22 @@ async def can_run_agent(db: AsyncSession, user_id: uuid.UUID, agent_type: str) -
     return count < settings.free_agent_runs_per_month
 
 
+async def can_generate_application(db: AsyncSession, user_id: uuid.UUID) -> bool:
+    plan = await get_plan(db, user_id)
+    if plan == "pro":
+        return True
+    from app.models.application import Application
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    result = await db.execute(
+        select(func.count(Application.id)).where(
+            Application.user_id == user_id,
+            Application.created_at >= month_start,
+        )
+    )
+    count = result.scalar() or 0
+    return count < settings.free_applications_per_month
+
+
 async def get_agent_run_count(db: AsyncSession, user_id: uuid.UUID, agent_type: str) -> int:
     from app.models.agent_run import AgentRun
     month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)

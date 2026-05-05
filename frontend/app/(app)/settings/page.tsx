@@ -171,7 +171,7 @@ function BillingTab({ stats }: { stats: DashboardStats | undefined }) {
           <div>
             <p className="text-sm font-semibold text-zinc-100">{isPro ? "Pro" : "Free"}</p>
             <p className="text-xs text-zinc-500">
-              {isPro ? "Unlimited agent runs" : "10 jobs / 10 contacts · 5 agent runs per month"}
+              {isPro ? "Unlimited agent runs" : "Up to 10 jobs · 10 contacts · 3 tailored materials / month"}
             </p>
           </div>
         </div>

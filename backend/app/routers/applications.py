@@ -12,6 +12,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.application import Application
 from app.models.user import User
+from app.services import quota
 from app.services.pdf_service import generate_cover_letter_pdf, generate_resume_pdf
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
@@ -65,6 +66,9 @@ async def generate_application(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await quota.can_generate_application(db, current_user.id):
+        raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited tailored materials")
+
     from app.agents.application import ApplicationAgent
 
     agent = ApplicationAgent(db, current_user.id)

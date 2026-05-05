@@ -59,7 +59,8 @@ class Settings(BaseSettings):
     # Plan limits
     free_jobs_per_month: int = 10
     free_contacts_per_month: int = 10
-    free_agent_runs_per_month: int = 5
+    free_agent_runs_per_month: int = 5  # networking + job scout manual runs
+    free_applications_per_month: int = 3
 
 
 settings = Settings()

@@ -8,8 +8,9 @@ import { track } from "@/lib/posthog";
 
 const FREE_FEATURES = [
   "7-day Networking Sprint included",
-  "10 contacts surfaced / month",
-  "5 agent runs / month (Scout, Network, Draft)",
+  "Up to 10 contacts / month",
+  "Up to 10 jobs / month",
+  "3 sets of tailored materials / month",
   "Email alerts for high-match jobs",
 ];
 
@@ -137,7 +138,7 @@ export default function PricingPage() {
             <div className="mb-6">
               <p className="text-sm font-medium text-zinc-300 mb-1">Pro</p>
               <div className="flex items-baseline gap-1">
-                <p className="text-3xl font-bold">$34.99</p>
+                <p className="text-3xl font-bold">$14.99</p>
                 <p className="text-sm text-zinc-400">/ month</p>
               </div>
               <p className="text-xs text-zinc-500 mt-1">Cancel anytime</p>
