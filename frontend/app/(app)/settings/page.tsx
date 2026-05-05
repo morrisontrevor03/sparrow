@@ -111,8 +111,10 @@ function Toggle({ label, checked, onChange, description }: { label: string; chec
 // ── Billing tab ──────────────────────────────────────────────────────────────
 
 function BillingTab({ stats }: { stats: DashboardStats | undefined }) {
+  const qc = useQueryClient();
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
 
   const isPro = stats?.plan === "pro";
 
@@ -141,6 +143,23 @@ function BillingTab({ stats }: { stats: DashboardStats | undefined }) {
     }
   };
 
+  const syncSubscription = async () => {
+    setSyncLoading(true);
+    try {
+      const result = await stripeApi.syncSubscription();
+      if (result.synced) {
+        toast.success("Plan synced — you're now on Pro!");
+        qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      } else {
+        toast.info("No active Pro subscription found on Stripe.");
+      }
+    } catch {
+      toast.error("Sync failed. Please contact support.");
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-white/8 bg-white/3 p-6 space-y-5">
       <div>
@@ -152,7 +171,7 @@ function BillingTab({ stats }: { stats: DashboardStats | undefined }) {
           <div>
             <p className="text-sm font-semibold text-zinc-100">{isPro ? "Pro" : "Free"}</p>
             <p className="text-xs text-zinc-500">
-              {isPro ? "Unlimited agent runs" : "5 jobs / 3 contacts per month"}
+              {isPro ? "Unlimited agent runs" : "10 jobs / 10 contacts · 5 agent runs per month"}
             </p>
           </div>
         </div>
@@ -179,12 +198,22 @@ function BillingTab({ stats }: { stats: DashboardStats | undefined }) {
           <p className="text-xs text-zinc-400">
             Upgrade to Pro for unlimited job scouting, networking, and application drafts.
           </p>
-          <Link
-            href="/pricing"
-            className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 transition-colors"
-          >
-            <Sparkles className="h-3.5 w-3.5" /> Upgrade to Pro
-          </Link>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link
+              href="/pricing"
+              className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 transition-colors"
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Upgrade to Pro
+            </Link>
+            <button
+              onClick={syncSubscription}
+              disabled={syncLoading}
+              className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
+            >
+              {syncLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
+              Already paid? Sync plan
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -170,6 +170,8 @@ export const stripe = {
     request<{ ok: boolean }>("/api/stripe/cancel-subscription", { method: "POST" }),
   billingPortal: () =>
     request<{ url: string }>("/api/stripe/billing-portal", { method: "POST" }),
+  syncSubscription: () =>
+    request<{ plan: string; synced: boolean; reason?: string }>("/api/stripe/sync-subscription", { method: "POST" }),
 };
 
 // Types

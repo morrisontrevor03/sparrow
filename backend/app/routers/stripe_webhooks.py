@@ -30,26 +30,40 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
+        user_id_ref = session.get("client_reference_id")
         customer_email = session.get("customer_email") or session.get("customer_details", {}).get("email")
         stripe_customer_id = session.get("customer")
         stripe_subscription_id = session.get("subscription")
 
-        if customer_email:
+        user = None
+        if user_id_ref:
+            result = await db.execute(select(User).where(User.id == user_id_ref))
+            user = result.scalar_one_or_none()
+            if not user:
+                logger.warning("checkout.session.completed: client_reference_id %s not found in DB", user_id_ref)
+        if not user and customer_email:
             result = await db.execute(select(User).where(User.email == customer_email))
             user = result.scalar_one_or_none()
-            if user:
-                sub_result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
-                sub = sub_result.scalar_one_or_none()
-                if not sub:
-                    sub = Subscription(user_id=user.id)
-                    db.add(sub)
-                sub.plan = "pro"
-                sub.status = "active"
-                sub.stripe_customer_id = stripe_customer_id
-                sub.stripe_subscription_id = stripe_subscription_id
-                await db.commit()
-                logger.info("Upgraded user %s to pro", user.email)
-                await posthog_capture(str(user.id), "subscription_paid", {"plan": "pro", "email": user.email})
+            if not user:
+                logger.warning("checkout.session.completed: email %s not found in DB (session %s)", customer_email, session.get("id"))
+        if not user:
+            logger.error(
+                "checkout.session.completed: could not resolve user — client_reference_id=%s email=%s session=%s",
+                user_id_ref, customer_email, session.get("id"),
+            )
+        else:
+            sub_result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
+            sub = sub_result.scalar_one_or_none()
+            if not sub:
+                sub = Subscription(user_id=user.id)
+                db.add(sub)
+            sub.plan = "pro"
+            sub.status = "active"
+            sub.stripe_customer_id = stripe_customer_id
+            sub.stripe_subscription_id = stripe_subscription_id
+            await db.commit()
+            logger.info("Upgraded user %s to pro", user.email)
+            await posthog_capture(str(user.id), "subscription_paid", {"plan": "pro", "email": user.email})
 
     elif event["type"] in ("customer.subscription.deleted", "customer.subscription.updated"):
         subscription_obj = event["data"]["object"]
@@ -89,6 +103,7 @@ async def create_checkout_session(
         mode="subscription",
         line_items=[{"price": settings.stripe_pro_price_id, "quantity": 1}],
         customer_email=current_user.email,
+        client_reference_id=str(current_user.id),
         success_url=f"{settings.frontend_url}/dashboard?upgraded=true",
         cancel_url=f"{settings.frontend_url}/pricing",
     )
@@ -116,6 +131,53 @@ async def billing_portal(
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"url": session.url}
+
+
+@router.post("/sync-subscription")
+async def sync_subscription(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pull the user's current subscription state from Stripe and sync it locally.
+
+    Recovers from missed or misrouted webhooks without requiring manual intervention.
+    """
+    result = await db.execute(select(Subscription).where(Subscription.user_id == current_user.id))
+    sub = result.scalar_one_or_none()
+
+    stripe_customer_id = sub.stripe_customer_id if sub else None
+
+    if not stripe_customer_id:
+        customers = stripe.Customer.search(query=f'email:"{current_user.email}"')
+        if not customers.data:
+            return {"plan": "free", "synced": False, "reason": "no_stripe_customer"}
+        stripe_customer_id = customers.data[0].id
+
+    subscriptions = stripe.Subscription.list(
+        customer=stripe_customer_id,
+        status="active",
+        price=settings.stripe_pro_price_id,
+        limit=1,
+    )
+
+    if not subscriptions.data:
+        return {"plan": sub.plan if sub else "free", "synced": False, "reason": "no_active_subscription"}
+
+    stripe_sub = subscriptions.data[0]
+
+    if not sub:
+        sub = Subscription(user_id=current_user.id)
+        db.add(sub)
+
+    sub.plan = "pro"
+    sub.status = "active"
+    sub.stripe_customer_id = stripe_customer_id
+    sub.stripe_subscription_id = stripe_sub.id
+    await db.commit()
+
+    logger.info("sync-subscription: upgraded %s to pro via Stripe sync", current_user.email)
+    await posthog_capture(str(current_user.id), "subscription_synced", {"email": current_user.email})
+    return {"plan": "pro", "synced": True}
 
 
 @router.post("/cancel-subscription")
