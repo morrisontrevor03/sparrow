@@ -10,11 +10,15 @@ function LogoMark() {
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="shrink-0">
       <defs>
         <linearGradient id="sb-logo-bg" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#1e2b1e" />
-          <stop offset="1" stopColor="#111911" />
+          <stop stopColor="#1a3320" />
+          <stop offset="1" stopColor="#0d1f11" />
         </linearGradient>
       </defs>
       <rect width="28" height="28" rx="7" fill="url(#sb-logo-bg)" />
+      {/* Three ascending staggered bars */}
+      <rect x="4"  y="17" width="11" height="4" rx="2" fill="white" fillOpacity="0.35" />
+      <rect x="8"  y="11.5" width="11" height="4" rx="2" fill="white" fillOpacity="0.65" />
+      <rect x="12" y="6"  width="11" height="4" rx="2" fill="white" fillOpacity="1" />
     </svg>
   );
 }
