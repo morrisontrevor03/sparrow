@@ -1,17 +1,8 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token");
-}
-
 async function downloadBlob(path: string, filename: string): Promise<void> {
-  const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${API_BASE}${path}`, { headers });
-  if (res.status === 401) { localStorage.removeItem("token"); window.location.href = "/login"; throw new Error("Unauthorized"); }
+  const res = await fetch(`${API_BASE}${path}`, { credentials: "include" });
+  if (res.status === 401) { window.location.href = "/login"; throw new Error("Unauthorized"); }
   if (!res.ok) { const err = await res.json().catch(() => ({ detail: res.statusText })); throw new Error(err.detail || "Download failed"); }
 
   const blob = await res.blob();
@@ -26,17 +17,14 @@ async function downloadBlob(path: string, filename: string): Promise<void> {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(init.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "include" });
 
   if (res.status === 401) {
-    localStorage.removeItem("token");
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
@@ -126,12 +114,11 @@ export const contacts = {
 export const resume = {
   delete: (id: string) => request<void>(`/api/resume/${id}`, { method: "DELETE" }),
   upload: (file: File) => {
-    const token = getToken();
     const fd = new FormData();
     fd.append("file", file);
     return fetch(`${API_BASE}/api/resume/upload`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: "include",
       body: fd,
     }).then(async (r) => {
       if (!r.ok) throw new Error((await r.json()).detail || "Upload failed");

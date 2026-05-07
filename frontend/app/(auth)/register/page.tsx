@@ -12,15 +12,15 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { refresh } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { access_token } = await auth.register(email, password, fullName || undefined);
-      await login(access_token);
+      await auth.register(email, password, fullName || undefined);
+      await refresh();
       router.replace("/onboarding");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Registration failed");

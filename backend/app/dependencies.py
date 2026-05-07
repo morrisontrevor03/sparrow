@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, Request, Response, status
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -13,7 +12,8 @@ from app.database import get_db
 from app.models.user import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+ACCESS_COOKIE_NAME = "access_token"
 
 
 def hash_password(password: str) -> str:
@@ -35,15 +35,50 @@ def create_access_token(user_id: uuid.UUID) -> str:
     )
 
 
+def set_auth_cookie(response: Response, token: str) -> None:
+    is_prod = settings.environment == "production"
+    response.set_cookie(
+        key=ACCESS_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=is_prod,
+        samesite="none" if is_prod else "lax",
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    is_prod = settings.environment == "production"
+    response.delete_cookie(
+        key=ACCESS_COOKIE_NAME,
+        path="/",
+        samesite="none" if is_prod else "lax",
+        secure=is_prod,
+    )
+
+
+def _extract_token(request: Request) -> str | None:
+    cookie_token = request.cookies.get(ACCESS_COOKIE_NAME)
+    if cookie_token:
+        return cookie_token
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    return None
+
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
     )
+    token = _extract_token(request)
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         user_id: str | None = payload.get("sub")
