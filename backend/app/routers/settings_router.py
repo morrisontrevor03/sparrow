@@ -1,4 +1,7 @@
 import re
+import uuid
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +16,22 @@ from app.models.user import User, UserPreferences
 from app.services.company_match import FUNDING_DB_KEYWORDS, clean_company_name
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+# Per-user rate limit for autocomplete (calls Claude): 5 per hour
+_autocomplete_rate_store: dict[str, list[datetime]] = defaultdict(list)
+_AUTOCOMPLETE_RATE_WINDOW = timedelta(hours=1)
+_AUTOCOMPLETE_RATE_MAX = 5
+
+
+def _enforce_autocomplete_rate_limit(user_id: uuid.UUID) -> None:
+    key = str(user_id)
+    now = datetime.now(timezone.utc)
+    cutoff = now - _AUTOCOMPLETE_RATE_WINDOW
+    attempts = [t for t in _autocomplete_rate_store[key] if t > cutoff]
+    if len(attempts) >= _AUTOCOMPLETE_RATE_MAX:
+        raise HTTPException(status_code=429, detail="Rate limit reached — maximum 5 autocomplete requests per hour")
+    attempts.append(now)
+    _autocomplete_rate_store[key] = attempts
 
 
 class PreferencesUpdate(BaseModel):
@@ -98,6 +117,7 @@ async def autocomplete_companies(
     body: AutocompleteRequest,
     current_user: User = Depends(get_current_user),
 ):
+    _enforce_autocomplete_rate_limit(current_user.id)
     if len(body.seed_companies) < 5:
         raise HTTPException(status_code=400, detail="Add at least 5 companies before using Autocomplete")
 

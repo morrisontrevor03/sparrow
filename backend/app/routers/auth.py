@@ -80,6 +80,7 @@ async def google_login():
 
 @router.get("/google/callback")
 async def google_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -89,6 +90,11 @@ async def google_callback(
 
     if error or not code:
         return RedirectResponse(url=f"{frontend_url}/login?error=oauth_denied", status_code=302)
+
+    # Validate OAuth state parameter against the cookie to prevent CSRF
+    expected_state = request.cookies.get("oauth_state")
+    if not expected_state or not state or not secrets.compare_digest(expected_state, state):
+        return RedirectResponse(url=f"{frontend_url}/login?error=oauth_state_mismatch", status_code=302)
 
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(_GOOGLE_TOKEN_URL, data={

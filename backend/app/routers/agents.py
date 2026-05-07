@@ -1,4 +1,6 @@
 import uuid
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -14,6 +16,22 @@ from app.models.user import User
 from app.services import quota
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+# Per-user rate limit for manual agent triggers: 10 runs per hour
+_agent_rate_store: dict[str, list[datetime]] = defaultdict(list)
+_AGENT_RATE_WINDOW = timedelta(hours=1)
+_AGENT_RATE_MAX = 10
+
+
+def _enforce_agent_rate_limit(user_id: uuid.UUID) -> None:
+    key = str(user_id)
+    now = datetime.now(timezone.utc)
+    cutoff = now - _AGENT_RATE_WINDOW
+    attempts = [t for t in _agent_rate_store[key] if t > cutoff]
+    if len(attempts) >= _AGENT_RATE_MAX:
+        raise HTTPException(status_code=429, detail="Rate limit reached — maximum 10 agent runs per hour")
+    attempts.append(now)
+    _agent_rate_store[key] = attempts
 
 
 class SingleCompanyRequest(BaseModel):
@@ -45,6 +63,7 @@ async def trigger_job_scout(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    _enforce_agent_rate_limit(current_user.id)
     if not await quota.can_run_agent(db, current_user.id, "job_scout"):
         raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited agent runs")
     from app.agents.job_scout import JobScoutAgent
@@ -59,6 +78,7 @@ async def trigger_networking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    _enforce_agent_rate_limit(current_user.id)
     if not await quota.can_run_agent(db, current_user.id, "networking"):
         raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited agent runs")
     from app.agents.networking import NetworkingAgent
@@ -74,6 +94,7 @@ async def trigger_networking_single(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    _enforce_agent_rate_limit(current_user.id)
     if not await quota.can_run_agent(db, current_user.id, "networking"):
         raise HTTPException(status_code=402, detail="Free plan limit reached — upgrade to Pro for unlimited agent runs")
     from app.agents.networking import NetworkingAgent

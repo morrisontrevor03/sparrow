@@ -1,4 +1,5 @@
 import logging
+import uuid as _uuid
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,7 +26,8 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, settings.stripe_webhook_secret)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Stripe webhook signature verification failed: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
     if event["type"] == "checkout.session.completed":
@@ -36,16 +38,35 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         stripe_subscription_id = session.get("subscription")
 
         user = None
+        valid_ref = False
         if user_id_ref:
+            try:
+                _uuid.UUID(user_id_ref)
+                valid_ref = True
+            except ValueError:
+                logger.error(
+                    "checkout.session.completed: client_reference_id %r is not a valid UUID — skipping upgrade (session %s)",
+                    user_id_ref, session.get("id"),
+                )
+
+        if valid_ref:
             result = await db.execute(select(User).where(User.id == user_id_ref))
             user = result.scalar_one_or_none()
             if not user:
                 logger.warning("checkout.session.completed: client_reference_id %s not found in DB", user_id_ref)
-        if not user and customer_email:
+        elif not user_id_ref and customer_email:
+            # Only fall back to email when no client_reference_id was provided at all
+            # (e.g. checkout sessions created outside the app)
             result = await db.execute(select(User).where(User.email == customer_email))
             user = result.scalar_one_or_none()
-            if not user:
+            if user:
+                logger.warning(
+                    "checkout.session.completed: resolved via email fallback for %s (session %s) — no client_reference_id was set",
+                    customer_email, session.get("id"),
+                )
+            else:
                 logger.warning("checkout.session.completed: email %s not found in DB (session %s)", customer_email, session.get("id"))
+
         if not user:
             logger.error(
                 "checkout.session.completed: could not resolve user — client_reference_id=%s email=%s session=%s",

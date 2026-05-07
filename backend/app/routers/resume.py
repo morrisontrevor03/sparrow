@@ -1,10 +1,13 @@
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.resume import Resume
@@ -88,9 +91,11 @@ async def delete_resume(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    import os as _os
-    if resume.file_path and _os.path.exists(resume.file_path):
-        _os.remove(resume.file_path)
+    if resume.file_path:
+        allowed_root = str(Path(settings.upload_dir).resolve() / str(current_user.id))
+        target = str(Path(resume.file_path).resolve())
+        if target.startswith(allowed_root) and os.path.exists(resume.file_path):
+            os.remove(resume.file_path)
 
     await db.delete(resume)
     await db.commit()
