@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.dependencies import (
-    _is_https_context,
     clear_auth_cookie,
     create_access_token,
     get_current_user,
@@ -81,7 +80,7 @@ async def google_login():
     resp.set_cookie(
         "oauth_state", state,
         httponly=True, samesite="lax", max_age=600,
-        secure=_is_https_context(),
+        secure=settings.environment == "production",
     )
     return resp
 
