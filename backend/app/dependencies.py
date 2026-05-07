@@ -35,26 +35,39 @@ def create_access_token(user_id: uuid.UUID) -> str:
     )
 
 
+def _is_https_context() -> bool:
+    """True if the deployment uses HTTPS (prod or HTTPS-configured URLs).
+
+    We can't rely on env var alone — Render etc. don't always have ENVIRONMENT set.
+    If either backend_url or frontend_url is https://, treat it as HTTPS context.
+    """
+    return (
+        settings.environment == "production"
+        or settings.frontend_url.startswith("https://")
+        or settings.backend_url.startswith("https://")
+    )
+
+
 def set_auth_cookie(response: Response, token: str) -> None:
-    is_prod = settings.environment == "production"
+    https = _is_https_context()
     response.set_cookie(
         key=ACCESS_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=is_prod,
-        samesite="none" if is_prod else "lax",
+        secure=https,
+        samesite="none" if https else "lax",
         max_age=settings.access_token_expire_minutes * 60,
         path="/",
     )
 
 
 def clear_auth_cookie(response: Response) -> None:
-    is_prod = settings.environment == "production"
+    https = _is_https_context()
     response.delete_cookie(
         key=ACCESS_COOKIE_NAME,
         path="/",
-        samesite="none" if is_prod else "lax",
-        secure=is_prod,
+        samesite="none" if https else "lax",
+        secure=https,
     )
 
 
