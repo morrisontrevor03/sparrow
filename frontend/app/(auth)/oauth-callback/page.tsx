@@ -5,12 +5,17 @@ import { useAuth } from "@/lib/auth";
 
 export default function OAuthCallbackPage() {
   const router = useRouter();
-  const { refresh } = useAuth();
+  const { login } = useAuth();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
     const next = params.get("next") ?? "dashboard";
-    refresh().then(() => router.replace(`/${next}`));
+    if (!token) {
+      router.replace("/login?error=oauth_failed");
+      return;
+    }
+    login(token).then(() => router.replace(`/${next}`));
   }, []);
 
   return (

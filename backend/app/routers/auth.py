@@ -4,21 +4,14 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import (
-    clear_auth_cookie,
-    create_access_token,
-    get_current_user,
-    hash_password,
-    set_auth_cookie,
-    verify_password,
-)
+from app.dependencies import create_access_token, get_current_user, hash_password, verify_password
 from app.models.subscription import Subscription
 from app.models.user import User, UserPreferences
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
@@ -161,16 +154,15 @@ async def google_callback(
     app_token = create_access_token(user.id)
     dest = "onboarding" if new_user else "dashboard"
     resp = RedirectResponse(
-        url=f"{frontend_url}/oauth-callback?next={dest}",
+        url=f"{frontend_url}/oauth-callback?token={app_token}&next={dest}",
         status_code=302,
     )
-    set_auth_cookie(resp, app_token)
     resp.delete_cookie("oauth_state")
     return resp
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(request: Request, response: Response, body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     _enforce_rate_limit(request, "register")
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
@@ -197,9 +189,7 @@ async def register(request: Request, response: Response, body: RegisterRequest, 
     verify_url = f"{settings.backend_url.rstrip('/')}/api/auth/verify-email?token={token}"
     await send_email(user.email, "Verify your ApplyNow account", verification_email(verify_url))
 
-    access = create_access_token(user.id)
-    set_auth_cookie(response, access)
-    return TokenResponse(access_token=access)
+    return TokenResponse(access_token=create_access_token(user.id))
 
 
 @router.get("/verify-email")
@@ -244,15 +234,13 @@ async def resend_verification(current_user: User = Depends(get_current_user), db
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(request: Request, response: Response, body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     _enforce_rate_limit(request, "login")
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    access = create_access_token(user.id)
-    set_auth_cookie(response, access)
-    return TokenResponse(access_token=access)
+    return TokenResponse(access_token=create_access_token(user.id))
 
 
 @router.get("/me", response_model=UserResponse)
@@ -261,6 +249,6 @@ async def me(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    clear_auth_cookie(response)
+async def logout(current_user: User = Depends(get_current_user)):
+    # JWT is stateless — actual invalidation happens client-side by clearing the token.
     return {"ok": True}

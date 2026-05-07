@@ -11,7 +11,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const { refresh } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -23,8 +23,8 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await auth.login(email, password);
-      await refresh();
+      const { access_token } = await auth.login(email, password);
+      await login(access_token);
       router.replace("/dashboard");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Login failed");

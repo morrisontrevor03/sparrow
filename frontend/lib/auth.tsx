@@ -11,46 +11,44 @@ interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  refresh: () => Promise<void>;
-  logout: () => Promise<void>;
+  login: (token: string) => Promise<void>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
-  refresh: async () => {},
-  logout: async () => {},
+  login: async () => {},
+  logout: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = async () => {
-    try {
-      const u = await auth.me();
-      setUser(u);
-    } catch {
-      setUser(null);
-    }
-  };
-
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
+    const token = localStorage.getItem("token");
+    if (!token) { setLoading(false); return; }
+    auth.me()
+      .then(setUser)
+      .catch(() => localStorage.removeItem("token"))
+      .finally(() => setLoading(false));
   }, []);
 
-  const logout = async () => {
-    try {
-      await auth.logout();
-    } catch {
-      // ignore — we want logout to succeed locally either way
-    }
+  const login = async (token: string) => {
+    localStorage.setItem("token", token);
+    const u = await auth.me();
+    setUser(u);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("token");
     setUser(null);
     window.location.href = "/login";
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, refresh, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -61,16 +61,16 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             user = result.scalar_one_or_none()
             if user:
                 logger.warning(
-                    "checkout.session.completed: resolved user %s via email fallback (session %s) — no client_reference_id was set",
-                    user.id, session.get("id"),
+                    "checkout.session.completed: resolved via email fallback for %s (session %s) — no client_reference_id was set",
+                    customer_email, session.get("id"),
                 )
             else:
-                logger.warning("checkout.session.completed: customer email not found in DB (session %s)", session.get("id"))
+                logger.warning("checkout.session.completed: email %s not found in DB (session %s)", customer_email, session.get("id"))
 
         if not user:
             logger.error(
-                "checkout.session.completed: could not resolve user — client_reference_id=%s session=%s",
-                user_id_ref, session.get("id"),
+                "checkout.session.completed: could not resolve user — client_reference_id=%s email=%s session=%s",
+                user_id_ref, customer_email, session.get("id"),
             )
         else:
             sub_result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
@@ -83,8 +83,8 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             sub.stripe_customer_id = stripe_customer_id
             sub.stripe_subscription_id = stripe_subscription_id
             await db.commit()
-            logger.info("Upgraded user %s to pro", user.id)
-            await posthog_capture(str(user.id), "subscription_paid", {"plan": "pro"})
+            logger.info("Upgraded user %s to pro", user.email)
+            await posthog_capture(str(user.id), "subscription_paid", {"plan": "pro", "email": user.email})
 
     elif event["type"] in ("customer.subscription.deleted", "customer.subscription.updated"):
         subscription_obj = event["data"]["object"]
@@ -196,8 +196,8 @@ async def sync_subscription(
     sub.stripe_subscription_id = stripe_sub.id
     await db.commit()
 
-    logger.info("sync-subscription: upgraded user %s to pro via Stripe sync", current_user.id)
-    await posthog_capture(str(current_user.id), "subscription_synced", {})
+    logger.info("sync-subscription: upgraded %s to pro via Stripe sync", current_user.email)
+    await posthog_capture(str(current_user.id), "subscription_synced", {"email": current_user.email})
     return {"plan": "pro", "synced": True}
 
 
@@ -224,5 +224,5 @@ async def cancel_subscription(
     sub.status = "canceled"
     await db.commit()
 
-    logger.info("User %s cancelled Pro subscription %s", current_user.id, sub.stripe_subscription_id)
+    logger.info("User %s cancelled Pro subscription %s", current_user.email, sub.stripe_subscription_id)
     return {"ok": True}

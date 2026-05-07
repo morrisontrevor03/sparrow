@@ -3,7 +3,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { stripe } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { Check, Heart, Eye, Shield } from "lucide-react";
 import { track } from "@/lib/posthog";
 
@@ -42,11 +41,11 @@ const PROMISES = [
 
 export default function PricingPage() {
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
 
   const handleUpgrade = async () => {
     track("checkout_started", { source: "pricing_page" });
-    if (!user) {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!token) {
       window.location.href = "/register";
       return;
     }
