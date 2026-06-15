@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -57,6 +58,15 @@ _YOE_PATTERNS = [
         re.IGNORECASE,
     ),
 ]
+
+# Reject the match when the YoE phrase is followed by non-job-requirement context
+# like "of coursework", "ago", or "from now". These cause false-positive rejections
+# (e.g. "3 years of coursework" being read as a YoE requirement).
+_YOE_FALSE_POSITIVE_CONTEXT = re.compile(
+    r"\b(coursework|studies|study|school|college|university|degree program|"
+    r"ago|from\s+now|of\s+age|old)\b",
+    re.IGNORECASE,
+)
 
 # Maximum acceptable LOWER bound (the job's minimum required years).
 # A posting demanding >= this many years is rejected.
@@ -192,6 +202,11 @@ class JobScoutAgent(BaseAgent):
         max_upper = _LEVEL_MAX_UPPER.get(experience_level or "mid", 8)
         for pattern in _YOE_PATTERNS:
             for m in pattern.finditer(description):
+                # Skip false-positives: "3 years of coursework", "5 years ago", etc.
+                # Look at the next ~30 chars after the match for disqualifying context.
+                tail = description[m.end() : m.end() + 30]
+                if _YOE_FALSE_POSITIVE_CONTEXT.search(tail):
+                    continue
                 try:
                     lower = int(m.group(1))
                 except (ValueError, IndexError, TypeError):
@@ -225,23 +240,22 @@ class JobScoutAgent(BaseAgent):
                 return True
         return False
 
-    async def _score_candidates(
+    async def _score_chunk(
         self,
-        candidates: list[dict],
+        chunk: list[dict],
         prefs: UserPreferences,
         ctx: dict,
         experience_level: str,
         employment_types: list[str],
     ) -> list[dict]:
-        """Single LLM call to score all candidates. Returns candidates with score >= 0.6."""
-        if not candidates:
-            return []
+        """Score a single chunk of candidates. Returns those with score >= 0.65 after boosts.
 
-        # Prioritise target-company hits, then cap at 40
-        target_companies_lower = {c.lower() for c in (prefs.target_companies or [])}
-        priority = [c for c in candidates if (c.get("company") or "").lower() in target_companies_lower]
-        rest = [c for c in candidates if c not in priority]
-        ordered = (priority + rest)[:40]
+        Scoring runs one chunk at a time so callers can save matches incrementally
+        and surface the first results within seconds rather than after the whole
+        batch finishes.
+        """
+        if not chunk:
+            return []
 
         skills_line = ", ".join(ctx["skills"]) if ctx["skills"] else "not parsed"
         exp_line = ", ".join(ctx["experience_roles"]) if ctx["experience_roles"] else "not parsed"
@@ -249,8 +263,11 @@ class JobScoutAgent(BaseAgent):
         target_companies_line = ", ".join(prefs.target_companies or []) or "not specified"
 
         candidate_lines = []
-        for i, job in enumerate(ordered, 1):
-            desc_snippet = (job.get("description") or "")[:300].replace("\n", " ")
+        for i, job in enumerate(chunk, 1):
+            # Feed the model a substantial slice of the description (not just 300
+            # chars) — relevance was the weakest part of the funnel and the YOE /
+            # level signals it needs usually live deeper in the posting.
+            desc_snippet = (job.get("description") or "")[:1500].replace("\n", " ")
             candidate_lines.append(
                 f"{i}. {job.get('title', '?')} @ {job.get('company', '?')} "
                 f"| {job.get('location', '') or 'location unknown'} "
@@ -300,26 +317,34 @@ Return exactly this JSON format (one entry per posting):
 [{{"index": 1, "score": 0.85, "reasoning": "brief reason"}}, ...]"""
 
         try:
-            raw = await self.complete(prompt, model="claude-haiku-4-5-20251001", max_tokens=2000)
-            # Strip any markdown code fences if present
+            # Sonnet over Haiku for the relevance call — level/role nuance from a
+            # description is exactly where the cheaper model was producing the
+            # off-target matches users complained about.
+            raw = await self.complete(prompt, model="claude-sonnet-4-6", max_tokens=1500)
             raw = raw.strip()
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[-1]
                 raw = raw.rsplit("```", 1)[0]
             scores_data: list[dict] = json.loads(raw)
         except Exception as exc:
-            logger.warning("Job scoring failed: %s", exc)
+            logger.warning("Job scoring chunk failed: %s", exc)
             return []
 
-        # Build index → score map
-        score_map = {item["index"]: item for item in scores_data if isinstance(item, dict)}
+        score_map: dict[int, dict] = {}
+        for item in scores_data:
+            if not isinstance(item, dict):
+                continue
+            local_i = item.get("index")
+            if not isinstance(local_i, int) or local_i < 1 or local_i > len(chunk):
+                continue
+            score_map[local_i] = item
 
-        # Apply networking + skill boosts, filter, merge
+        # Apply networking + skill boosts, filter
         networked = ctx["networked_companies"]
         skills_set = {s.lower() for s in ctx["skills"]}
 
         results = []
-        for i, job in enumerate(ordered, 1):
+        for i, job in enumerate(chunk, 1):
             entry = score_map.get(i)
             if not entry:
                 continue
@@ -352,6 +377,13 @@ Return exactly this JSON format (one entry per posting):
                 boost += 0.05
                 reasoning += f" | Skill boost +0.05: {', '.join(list(matched_skills)[:3])}"
 
+            # Unknown-company penalty: Exa general search and the Adzuna/JSearch
+            # fallbacks emit company="Unknown" when no employer could be resolved.
+            # Rank these down hard so they don't crowd out verified listings.
+            if not company or company.strip().lower() == "unknown":
+                boost -= 0.15
+                reasoning += " | Unverified employer −0.15"
+
             final_score = min(1.0, base_score + boost)
             if final_score < 0.65:
                 continue
@@ -359,6 +391,64 @@ Return exactly this JSON format (one entry per posting):
             results.append({**job, "match_score": final_score, "match_reasoning": reasoning})
 
         return results
+
+    async def _score_candidates(
+        self,
+        candidates: list[dict],
+        prefs: UserPreferences,
+        ctx: dict,
+        experience_level: str,
+        employment_types: list[str],
+    ) -> list[dict]:
+        """Order, chunk, and score a full candidate set in one shot.
+
+        `_execute` scores chunk-by-chunk so it can save incrementally; this method
+        keeps the same ordering + chunking but returns every scored match at once.
+        It's the entry point the eval harness drives, so production and eval share
+        the exact per-chunk scoring path via `_score_chunk`.
+        """
+        if not candidates:
+            return []
+
+        target_companies_lower = {c.lower() for c in (prefs.target_companies or [])}
+        priority = [c for c in candidates if (c.get("company") or "").lower() in target_companies_lower]
+        rest = [c for c in candidates if c not in priority]
+        ordered = (priority + rest)[:100]
+
+        CHUNK_SIZE = 25
+        results: list[dict] = []
+        for chunk_start in range(0, len(ordered), CHUNK_SIZE):
+            chunk = ordered[chunk_start : chunk_start + CHUNK_SIZE]
+            results.extend(
+                await self._score_chunk(chunk, prefs, ctx, experience_level, employment_types)
+            )
+        return results
+
+    async def _gather_searches(self, coros: list, limit: int = 8) -> list[dict]:
+        """Run search coroutines concurrently (bounded) and flatten the results.
+
+        The four source tracks used to run strictly sequentially — up to ~80
+        awaited calls one after another, which is the main reason first results
+        took minutes. Fanning them out concurrently (capped to stay friendly with
+        per-source rate limits) collapses that to roughly the slowest single call.
+        Each source already swallows its own errors; we guard here too so one bad
+        query can't sink the whole batch.
+        """
+        sem = asyncio.Semaphore(limit)
+
+        async def _run(coro):
+            async with sem:
+                try:
+                    return await coro
+                except Exception as exc:
+                    logger.warning("Job search task failed: %s", exc)
+                    return []
+
+        results = await asyncio.gather(*(_run(c) for c in coros))
+        flat: list[dict] = []
+        for sub in results:
+            flat.extend(sub or [])
+        return flat
 
     async def _execute(self, **kwargs) -> dict:
         await self._update_progress("Loading preferences")
@@ -393,38 +483,51 @@ Return exactly this JSON format (one entry per posting):
 
         ctx = await self._build_user_context()
 
-        # Location hint for search queries (skip "Remote" as a string)
+        # Location hints — query each non-remote location separately.
+        # Cap at 2 locations to bound API fan-out; "Remote" is handled by LLM scoring.
         real_locations = [loc for loc in target_locations if "remote" not in loc.lower()]
-        location_hint = real_locations[0] if real_locations else ""
+        location_hints = real_locations[:2] if real_locations else [""]
+        primary_location = location_hints[0]
 
-        candidates: list[dict] = []
+        # ── Build the full search fan-out, then run it concurrently ─────────
+        # All four tracks are independent network calls, so we queue every query
+        # up front and dispatch them together rather than awaiting one at a time.
+        search_coros: list = []
 
-        # ── Track A: Exa per-company ────────────────────────────────────────
+        # Track A: Exa per-company
         if target_companies:
-            await self._update_progress(f"Searching Exa at {len(target_companies[:10])} target companies")
             for company in target_companies[:10]:
-                for role in target_roles[:2]:
+                for role in target_roles[:5]:
                     query = f"{role} job opening at {company}"
-                    if location_hint:
-                        query += f" {location_hint}"
-                    hits = await job_api_client.search_jobs_exa(query, max_results=5, company_hint=company)
-                    candidates.extend(hits)
+                    if primary_location:
+                        query += f" {primary_location}"
+                    search_coros.append(
+                        job_api_client.search_jobs_exa(query, max_results=5, company_hint=company)
+                    )
 
-        # ── Track B: Exa general role search ───────────────────────────────
-        await self._update_progress("Searching Exa for role matches")
-        for role in target_roles[:3]:
-            query = f"{role} job opening"
-            if location_hint:
-                query += f" {location_hint}"
-            hits = await job_api_client.search_jobs_exa(query, max_results=8)
-            candidates.extend(hits)
+        # Track B: Exa general role search
+        for role in target_roles[:5]:
+            for loc in location_hints:
+                query = f"{role} job opening"
+                if loc:
+                    query += f" {loc}"
+                search_coros.append(job_api_client.search_jobs_exa(query, max_results=8))
 
-        # ── Track C: JSearch (structured salary/type data) ──────────────────
-        await self._update_progress("Searching JSearch")
-        for role in target_roles[:2]:
-            query = f"{role} {location_hint}".strip()
-            hits = await job_api_client.search_jsearch(query, max_results=10)
-            candidates.extend(hits)
+        # Track C: JSearch (structured salary/type data)
+        for role in target_roles[:5]:
+            for loc in location_hints:
+                query = f"{role} {loc}".strip()
+                search_coros.append(job_api_client.search_jsearch(query, max_results=10))
+
+        # Track D: Adzuna (US-wide aggregator)
+        for role in target_roles[:5]:
+            for loc in location_hints:
+                search_coros.append(
+                    job_api_client.search_adzuna(role, location=loc, max_results=15)
+                )
+
+        await self._update_progress(f"Searching {len(search_coros)} queries across job sources")
+        candidates = await self._gather_searches(search_coros, limit=8)
 
         # ── Deduplicate by URL ──────────────────────────────────────────────
         seen: set[str] = set(existing_urls)
@@ -433,10 +536,11 @@ Return exactly this JSON format (one entry per posting):
             url = c.get("url", "")
             if url and url not in seen:
                 seen.add(url)
-                # Filter out excluded companies early
+                # Filter out excluded companies early (normalized match — avoid
+                # substring false-positives like "Apple" matching "Pineapple Labs")
                 if prefs.excluded_companies:
-                    company = (c.get("company") or "").lower()
-                    if any(ex.lower() in company for ex in prefs.excluded_companies):
+                    company = c.get("company") or ""
+                    if any(companies_match(ex, company) for ex in prefs.excluded_companies):
                         continue
                 unique.append(c)
 
@@ -455,21 +559,50 @@ Return exactly this JSON format (one entry per posting):
         if not unique:
             return {"summary": "No reachable job postings found", "jobs_found": 0}
 
-        # ── Score ───────────────────────────────────────────────────────────
-        await self._update_progress(f"Scoring {len(unique)} candidates")
-        scored = await self._score_candidates(unique, prefs, ctx, experience_level, employment_types)
+        # ── Prioritise target-company hits, then cap at 100 ─────────────────
+        target_companies_lower = {c.lower() for c in (prefs.target_companies or [])}
+        priority = [c for c in unique if (c.get("company") or "").lower() in target_companies_lower]
+        rest = [c for c in unique if c not in priority]
+        ordered = (priority + rest)[:100]
 
-        logger.info("Job Scout: %d candidates scored >= 0.6", len(scored))
+        # ── Score + save in waves ───────────────────────────────────────────
+        # Scoring the best (target-company) candidates first and persisting after
+        # each chunk means matches show up in the dashboard within seconds instead
+        # of only after the entire batch finishes.
+        CHUNK_SIZE = 25
+        total_saved = 0
+        all_new_jobs: list[Job] = []
 
-        # ── Save ────────────────────────────────────────────────────────────
-        await self._update_progress("Saving matched jobs")
-        saved_count = await self._save_jobs(scored)
+        for chunk_start in range(0, len(ordered), CHUNK_SIZE):
+            if not await quota.can_surface_job(self.db, self.user_id):
+                break
+            chunk = ordered[chunk_start : chunk_start + CHUNK_SIZE]
+            await self._update_progress(
+                f"Scoring matches ({min(chunk_start + CHUNK_SIZE, len(ordered))}/{len(ordered)})"
+            )
+            scored = await self._score_chunk(chunk, prefs, ctx, experience_level, employment_types)
+            new_jobs = await self._save_job_batch(scored)
+            all_new_jobs.extend(new_jobs)
+            total_saved += len(new_jobs)
+            if total_saved:
+                await self._update_progress(
+                    f"Found {total_saved} match{'es' if total_saved != 1 else ''} so far"
+                )
 
-        return {"summary": f"Saved {saved_count} new jobs", "jobs_found": saved_count}
+        logger.info("Job Scout: %d candidates saved", total_saved)
 
-    async def _save_jobs(self, jobs_data: list[dict]) -> int:
-        saved = 0
-        new_jobs = []
+        # ── Digest email (single send across all waves) ─────────────────────
+        await self._send_digest(all_new_jobs)
+
+        return {"summary": f"Saved {total_saved} new jobs", "jobs_found": total_saved}
+
+    async def _save_job_batch(self, jobs_data: list[dict]) -> list["Job"]:
+        """Persist one wave of scored jobs and return the newly created rows.
+
+        Does not send email — the digest is sent once at the end of the run by
+        `_send_digest` so multiple waves don't trigger multiple emails.
+        """
+        new_jobs: list[Job] = []
 
         experience_level = getattr(self, "_experience_level", "mid")
         employment_types = getattr(self, "_employment_types", ["full_time"])
@@ -514,37 +647,52 @@ Return exactly this JSON format (one entry per posting):
             self.db.add(job)
             await self.db.flush()
             await quota.increment_jobs_surfaced(self.db, self.user_id)
-            saved += 1
             new_jobs.append(job)
 
         await self.db.commit()
+        return new_jobs
 
-        if saved > 0:
-            user_result = await self.db.execute(select(User).where(User.id == self.user_id))
-            user = user_result.scalar_one_or_none()
-            if user:
-                jobs_payload = sorted(
-                    [
-                        {
-                            "id": str(job.id),
-                            "title": job.title,
-                            "company": job.company,
-                            "location": job.location,
-                            "url": job.url,
-                            "match_score": job.match_score or 0,
-                            "match_reasoning": job.match_reasoning or "",
-                        }
-                        for job in new_jobs
-                    ],
-                    key=lambda j: j["match_score"],
-                    reverse=True,
-                )
-                html = new_jobs_digest_email(jobs_payload, settings.frontend_url)
-                subject = f"{saved} new job{'s' if saved != 1 else ''} found — apply early"
-                sent = await send_email(user.email, subject, html)
-                if sent:
-                    for job in new_jobs:
-                        job.email_sent = True
-                    await self.db.commit()
+    async def _send_digest(self, new_jobs: list["Job"]) -> None:
+        """Email the user a digest of the run's matches.
 
-        return saved
+        Gate lowered from 0.85 → 0.70: the old bar meant a user whose best match
+        was, say, 0.80 got complete silence — no email, no signal the scout had
+        run at all. 0.70 ("decent match, worth applying") still keeps lukewarm
+        noise out while making sure a productive run is never invisible.
+        """
+        if not new_jobs:
+            return
+
+        top_score = max((j.match_score or 0 for j in new_jobs), default=0)
+        if top_score < 0.70:
+            return
+
+        user_result = await self.db.execute(select(User).where(User.id == self.user_id))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            return
+
+        jobs_payload = sorted(
+            [
+                {
+                    "id": str(job.id),
+                    "title": job.title,
+                    "company": job.company,
+                    "location": job.location,
+                    "url": job.url,
+                    "match_score": job.match_score or 0,
+                    "match_reasoning": job.match_reasoning or "",
+                }
+                for job in new_jobs
+            ],
+            key=lambda j: j["match_score"],
+            reverse=True,
+        )
+        html = new_jobs_digest_email(jobs_payload, settings.frontend_url)
+        saved = len(new_jobs)
+        subject = f"{saved} new job{'s' if saved != 1 else ''} found — apply early"
+        sent = await send_email(user.email, subject, html)
+        if sent:
+            for job in new_jobs:
+                job.email_sent = True
+            await self.db.commit()

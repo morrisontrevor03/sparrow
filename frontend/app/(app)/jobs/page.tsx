@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { jobs, agents, applications, Job, AgentRun } from "@/lib/api";
@@ -132,18 +132,56 @@ function JobCard({ job, onDismiss }: { job: Job; onDismiss: (id: string) => void
   );
 }
 
+function ScoutProgress({ run }: { run: AgentRun }) {
+  const step = run.current_step || (run.status === "queued" ? "Queued…" : "Starting up…");
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/4 p-4">
+      <Loader2 className="h-4 w-4 animate-spin text-emerald-400 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-zinc-200">Job Scout is working…</p>
+        <p className="text-xs text-zinc-400 mt-0.5 animate-pulse truncate">{step}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function JobsPage() {
   const qc = useQueryClient();
-  const [scoutRunning, setScoutRunning] = useState(false);
+  const [starting, setStarting] = useState(false);
 
-  const { data = [], isLoading } = useQuery<Job[]>({
-    queryKey: ["jobs"],
-    queryFn: () => jobs.list(),
-  });
+  // Poll runs while a scout run is queued/running so we can stream live progress.
   const { data: runs } = useQuery<AgentRun[]>({
     queryKey: ["agent-runs"],
     queryFn: () => agents.runs(),
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (r: AgentRun) =>
+          r.agent_type === "job_scout" && (r.status === "running" || r.status === "queued")
+      )
+        ? 2_000
+        : false,
   });
+
+  const activeScoutRun = runs?.find(
+    (r) => r.agent_type === "job_scout" && (r.status === "running" || r.status === "queued")
+  );
+
+  // While the scout runs, poll jobs too so incrementally-saved matches stream in.
+  const { data = [], isLoading } = useQuery<Job[]>({
+    queryKey: ["jobs"],
+    queryFn: () => jobs.list(),
+    refetchInterval: activeScoutRun ? 3_000 : false,
+  });
+
+  // When a run finishes (active → inactive), do one final refetch so the last
+  // wave of matches lands even if it was saved between polls.
+  const wasActive = useRef(false);
+  useEffect(() => {
+    if (wasActive.current && !activeScoutRun) {
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+    }
+    wasActive.current = !!activeScoutRun;
+  }, [activeScoutRun, qc]);
 
   const dismissMutation = useMutation({
     mutationFn: jobs.dismiss,
@@ -152,7 +190,7 @@ export default function JobsPage() {
   });
 
   const runJobScout = async () => {
-    setScoutRunning(true);
+    setStarting(true);
     try {
       await agents.runJobScout();
       toast.success("Job Scout started");
@@ -165,10 +203,11 @@ export default function JobsPage() {
         toast.error("Failed to start Job Scout");
       }
     } finally {
-      setScoutRunning(false);
+      setStarting(false);
     }
   };
 
+  const isScouting = starting || !!activeScoutRun;
   const hasCompletedScoutRun = runs?.some(
     (r) => r.agent_type === "job_scout" && r.status === "completed"
   );
@@ -184,33 +223,47 @@ export default function JobsPage() {
         </div>
         <button
           onClick={runJobScout}
-          disabled={scoutRunning}
+          disabled={isScouting}
           className="flex items-center gap-1.5 rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-white/10 hover:text-white disabled:opacity-50 transition-colors"
         >
-          {scoutRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-          {scoutRunning ? "Starting…" : "Run Job Scout"}
+          {isScouting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+          {isScouting ? "Running…" : "Run Job Scout"}
         </button>
       </div>
 
+      {activeScoutRun && <ScoutProgress run={activeScoutRun} />}
+
       {data.length === 0 ? (
-        <div className="rounded-xl border border-white/8 bg-white/3 p-12 text-center grid-bg">
-          {hasCompletedScoutRun ? (
-            <>
-              <p className="text-zinc-400 text-sm">No matches yet.</p>
-              <p className="text-zinc-500 text-xs mt-2">
-                Try adding more locations, expanding target roles, or using{" "}
-                <Link href="/settings" className="underline underline-offset-2 hover:text-zinc-300">
-                  Autocomplete in Settings
-                </Link>.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-zinc-400 text-sm">No jobs yet.</p>
-              <p className="text-zinc-500 text-xs mt-2">Run Job Scout above or wait for the next scheduled run.</p>
-            </>
-          )}
-        </div>
+        activeScoutRun ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="rounded-xl border border-white/6 bg-white/2 p-5 animate-pulse">
+                <div className="h-4 w-2/3 rounded bg-white/8" />
+                <div className="mt-2 h-3 w-1/3 rounded bg-white/6" />
+                <div className="mt-4 h-3 w-full rounded bg-white/5" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-white/8 bg-white/3 p-12 text-center grid-bg">
+            {hasCompletedScoutRun ? (
+              <>
+                <p className="text-zinc-400 text-sm">No matches yet.</p>
+                <p className="text-zinc-500 text-xs mt-2">
+                  Try adding more locations, expanding target roles, or using{" "}
+                  <Link href="/settings" className="underline underline-offset-2 hover:text-zinc-300">
+                    Autocomplete in Settings
+                  </Link>.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-zinc-400 text-sm">No jobs yet.</p>
+                <p className="text-zinc-500 text-xs mt-2">Run Job Scout above or wait for the next scheduled run.</p>
+              </>
+            )}
+          </div>
+        )
       ) : (
         <div className="space-y-3">
           {data.map((job) => (

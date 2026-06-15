@@ -210,9 +210,12 @@ async def send_weekly_summaries():
 
 
 def register_jobs():
+    # Every 30 min: the core promise is being first to a new posting, so a 4-hour
+    # cadence directly undercut the product. Interval keeps fresh listings flowing;
+    # per-user free-plan quotas still bound how many jobs actually get surfaced.
     scheduler.add_job(
         run_job_scout_for_all_users,
-        CronTrigger(hour="*/4", minute=0, timezone="UTC"),
+        IntervalTrigger(minutes=30),
         id="job_scout_global",
         replace_existing=True,
         misfire_grace_time=300,
