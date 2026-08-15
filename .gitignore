@@ -18,6 +18,9 @@ frontend/.env.local
 # Uploads
 backend/uploads/
 
+# Local DB dumps
+dev_backup.sql
+
 # Node
 frontend/node_modules/
 frontend/.next/
