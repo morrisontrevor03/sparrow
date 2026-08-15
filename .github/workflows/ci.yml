@@ -157,30 +157,19 @@ jobs:
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
-    needs:
-      [
-        changes,
-        frontend-lint,
-        frontend-build,
-        backend-lint,
-        backend-test,
-        frontend-test,
-      ]
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    needs: [changes, backend-lint, backend-test]
+    if: |
+      github.ref == 'refs/heads/master' && github.event_name == 'push' &&
+      needs.changes.outputs.backend == 'true'
     steps:
       - uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: BACKEND_CHANGED,FRONTEND_CHANGED
           script: |
             cd ${{ secrets.EC2_APP_DIR }}
             git pull --ff-only
-            [ "$BACKEND_CHANGED" = "true" ] && docker compose -f docker-compose.prod.yml build backend
-            [ "$FRONTEND_CHANGED" = "true" ] && docker compose -f docker-compose.prod.yml build frontend
+            docker compose -f docker-compose.prod.yml build backend
             docker compose -f docker-compose.prod.yml up -d
             docker image prune -f
-        env:
-          BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
-          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
