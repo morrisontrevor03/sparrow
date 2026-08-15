@@ -13,6 +13,11 @@ class Contact(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # Nullable: contacts discovered before campaigns existed, and one-off contacts
+    # created directly through the API or an MCP client, have no campaign.
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     company: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     first_name: Mapped[str | None] = mapped_column(String(255))
     last_name: Mapped[str | None] = mapped_column(String(255))
@@ -31,3 +36,4 @@ class Contact(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship("User", back_populates="contacts")
+    campaign: Mapped["Campaign | None"] = relationship("Campaign", back_populates="contacts")

@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -27,39 +27,35 @@ class User(Base):
 
     preferences: Mapped["UserPreferences | None"] = relationship("UserPreferences", back_populates="user", uselist=False)
     resumes: Mapped[list["Resume"]] = relationship("Resume", back_populates="user")
-    jobs: Mapped[list["Job"]] = relationship("Job", back_populates="user")
-    applications: Mapped[list["Application"]] = relationship("Application", back_populates="user")
+    campaigns: Mapped[list["Campaign"]] = relationship("Campaign", back_populates="user")
     contacts: Mapped[list["Contact"]] = relationship("Contact", back_populates="user")
     agent_runs: Mapped[list["AgentRun"]] = relationship("AgentRun", back_populates="user")
-    subscription: Mapped["Subscription | None"] = relationship("Subscription", back_populates="user", uselist=False)
-    monthly_usage: Mapped[list["MonthlyUsage"]] = relationship("MonthlyUsage", back_populates="user")
+    billing_account: Mapped["BillingAccount | None"] = relationship("BillingAccount", back_populates="user", uselist=False)
+    credit_entries: Mapped[list["CreditLedgerEntry"]] = relationship("CreditLedgerEntry", back_populates="user")
 
 
 class UserPreferences(Base):
+    """
+    Account-level settings — the person, not the campaign.
+
+    Everything targeting-related (titles, companies, locations, stages) lives on
+    Campaign, because a user running business development and a job search at the
+    same time needs two different target sets.
+    """
+
     __tablename__ = "user_preferences"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
 
-    target_roles: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
-    target_companies: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
-    target_locations: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
-    excluded_companies: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
-    min_salary: Mapped[int | None] = mapped_column(Integer)
-    max_salary: Mapped[int | None] = mapped_column(Integer)
-    employment_types: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
-    experience_level: Mapped[str | None] = mapped_column(String(50))
+    # Short self-description used to personalize outreach. Complements the parsed
+    # resume: the resume says what you've done, these say how you want to be framed.
+    headline: Mapped[str | None] = mapped_column(String(255))
+    value_prop: Mapped[str | None] = mapped_column(Text)
 
-    salary_type: Mapped[str | None] = mapped_column(String(10))  # "hourly" or "salary"
-    location_flexible: Mapped[bool] = mapped_column(Boolean, default=True)
-    work_environment: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
-    open_to_similar_companies: Mapped[bool] = mapped_column(Boolean, default=False)
-    company_stages: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
-    company_industries: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
-
-    scout_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    networking_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    application_agent_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    timezone: Mapped[str | None] = mapped_column(String(64))
+    email_digest_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_low_balance_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

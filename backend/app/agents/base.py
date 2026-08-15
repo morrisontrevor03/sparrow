@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class BaseAgent:
     """
-    Base class for all ApplyNow agents.
+    Base class for Sparrow agents.
 
     Wraps the Anthropic Claude tool-use loop and provides:
     - Automatic tool dispatch via subclass implementation of `dispatch_tool`
@@ -26,7 +26,7 @@ class BaseAgent:
     """
 
     agent_type: str = "base"
-    model: str = "claude-sonnet-4-6"
+    model: str = "claude-sonnet-5"
     max_iterations: int = 20
 
     def __init__(self, db: AsyncSession, user_id: uuid.UUID):
@@ -66,9 +66,9 @@ class BaseAgent:
             result = await self._execute(**kwargs)
             self._run.status = "completed"
             self._run.output_summary = result.get("summary", "")
-            self._run.jobs_found = result.get("jobs_found", 0)
             self._run.contacts_found = result.get("contacts_found", 0)
-            self._run.applications_created = result.get("applications_created", 0)
+            self._run.drafts_written = result.get("drafts_written", 0)
+            self._run.credits_spent = result.get("credits_spent", 0)
         except Exception as exc:
             self._run.status = "failed"
             self._run.error_message = str(exc)
@@ -262,7 +262,7 @@ class BaseAgent:
 
         return "Max iterations reached"
 
-    async def complete(self, prompt: str, model: str = "claude-haiku-4-5-20251001", max_tokens: int = 400) -> str:
+    async def complete(self, prompt: str, model: str = "claude-haiku-4-5", max_tokens: int = 400) -> str:
         """Single-turn text completion with automatic OpenAI fallback."""
         use_openai = False
         try:

@@ -1,139 +1,139 @@
 import Link from "next/link";
-import { BriefcaseBusiness, Users, FileCheck } from "lucide-react";
+import { ArrowRight, Plug, Search, PenLine } from "lucide-react";
+import { MarketingFooter, MarketingNav } from "@/components/marketing/Nav";
+import { Button } from "@/components/ui/button";
 
-function LogoMark() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="shrink-0">
-      <defs>
-        <linearGradient id="mkt-logo-bg" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#1a3320" />
-          <stop offset="1" stopColor="#0d1f11" />
-        </linearGradient>
-      </defs>
-      <rect width="28" height="28" rx="7" fill="url(#mkt-logo-bg)" />
-      {/* Three ascending staggered bars */}
-      <rect x="4"  y="17" width="11" height="4" rx="2" fill="white" fillOpacity="0.35" />
-      <rect x="8"  y="11.5" width="11" height="4" rx="2" fill="white" fillOpacity="0.65" />
-      <rect x="12" y="6"  width="11" height="4" rx="2" fill="white" fillOpacity="1" />
-    </svg>
-  );
-}
-
-const features = [
+const USE_CASES = [
   {
-    icon: BriefcaseBusiness,
-    title: "Job Scout",
-    description:
-      "AI agents scan thousands of job boards around the clock and alert you the moment a high-match posting appears, before most candidates even see it.",
+    title: "Business development",
+    body: "Find the VP who owns the budget at every account on your list — not whoever answers the contact form.",
   },
   {
-    icon: Users,
-    title: "Strategic Networking",
-    description:
-      "Automatically finds the right people at your target companies, hiring managers, staff engineers, and recruiters, then drafts a personalized coffee chat message for each one.",
+    title: "Fundraising",
+    body: "Partners and principals investing at your stage, with a first message that leads on traction.",
   },
   {
-    icon: FileCheck,
-    title: "Instant Application Drafts",
-    description:
-      "For every strong match, your resume and cover letter are automatically tailored to the role. You get a polished draft in your inbox within minutes of the posting going live.",
+    title: "Recruiting",
+    body: "Engineers already doing the work you're hiring for, approached like people rather than leads.",
+  },
+  {
+    title: "Job search",
+    body: "The peers and hiring managers inside a company who will actually reply to you.",
+  },
+];
+
+const STEPS = [
+  {
+    icon: Search,
+    title: "Describe who you want to meet",
+    body: "A goal in plain English, the titles that matter, and the companies or industries to look at.",
+  },
+  {
+    icon: PenLine,
+    title: "Sparrow finds them and writes",
+    body: "It searches for real people at those companies, ranks them for your goal, and drafts a first message to each.",
+  },
+  {
+    icon: Plug,
+    title: "Review, send, or drive it from your AI tools",
+    body: "Everything shows up in the app. Connect Sparrow over MCP and run it from Claude or Cursor instead.",
   },
 ];
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen text-zinc-50">
-      {/* Nav */}
-      <header className="border-b border-white/[0.06] backdrop-blur-xl backdrop-saturate-150 sticky top-0 z-40 bg-zinc-950/60">
-        <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <LogoMark />
-            <span className="text-sm font-semibold">ApplyNow</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link href="/login" className="text-sm text-zinc-400 hover:text-white transition-colors">
-              Sign in
-            </Link>
-            <Link
-              href="/register"
-              className="rounded-lg bg-white px-4 py-1.5 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 transition-colors"
-            >
-              Get started
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-surface">
+      <div className="aurora-hero absolute inset-x-0 top-0 h-[520px]" />
+      <MarketingNav />
 
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 aurora-hero pointer-events-none" />
-        <div className="absolute inset-0 grid-bg grid-bg-fade pointer-events-none" />
-        <div className="relative mx-auto max-w-3xl px-6 py-28 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-zinc-300 mb-8">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-signal opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-signal" />
+      <main className="relative z-10">
+        <section className="grid-bg grid-bg-fade mx-auto max-w-5xl px-6 pb-20 pt-16 text-center">
+          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-border-subtle bg-surface px-3 py-1 text-xs text-text-muted">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
             </span>
-            AI agents working for you 24/7
+            Now speaks MCP
           </div>
-          <h1 className="text-5xl sm:text-7xl font-semibold tracking-[-0.04em] leading-[0.95] mb-6">
-            The job search agent
-            <br />
-            <span className="text-zinc-500">that never sleeps</span>
+
+          <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-semibold tracking-tight sm:text-5xl">
+            The hard part of outreach isn&apos;t sending. It&apos;s knowing who to write to.
           </h1>
-          <p className="text-lg text-zinc-400 leading-relaxed mb-10 max-w-xl mx-auto">
-            ApplyNow runs AI agents around the clock to find jobs, build your network,
-            and draft tailored applications so you respond before anyone else.
+          <p className="mx-auto mt-5 max-w-xl text-lg text-text-muted">
+            Sparrow finds the right person at each company you care about and drafts the first
+            message — for business development, fundraising, recruiting, or a job search.
           </p>
-          <div className="flex items-center justify-center gap-3">
-            <Link
-              href="/register"
-              className="btn-primary rounded-xl px-6 py-3 text-sm font-semibold"
-            >
-              Start free
-            </Link>
-            <Link
-              href="/pricing"
-              className="rounded-xl border border-white/10 px-6 py-3 text-sm font-medium text-zinc-300 hover:bg-white/5 transition-colors"
-            >
-              View pricing
-            </Link>
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Button asChild size="lg">
+              <Link href="/register">
+                Start with 25 free credits
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link href="/pricing">See pricing</Link>
+            </Button>
           </div>
-        </div>
-      </section>
+          <p className="mt-3 text-xs text-text-subtle">No subscription. No card to start.</p>
+        </section>
 
-      {/* Features */}
-      <section className="mx-auto max-w-5xl px-6 py-20">
-        <div className="grid gap-5 sm:grid-cols-3">
-          {features.map(({ icon: Icon, title, description }) => (
-            <div key={title} className="card-glow p-6 space-y-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5">
-                <Icon className="h-5 w-5 text-zinc-300" />
+        <section className="mx-auto max-w-5xl px-6 pb-20">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {STEPS.map(({ icon: Icon, title, body }) => (
+              <div key={title} className="card-glow p-6">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
+                  <Icon className="h-4 w-4 text-accent" />
+                </div>
+                <h3 className="mt-4 font-medium">{title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-text-muted">{body}</p>
               </div>
-              <h3 className="font-semibold text-zinc-100">{title}</h3>
-              <p className="text-sm text-zinc-400 leading-relaxed">{description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
 
-      {/* CTA */}
-      <section className="mx-auto max-w-5xl px-6 pb-24">
-        <div className="relative overflow-hidden rounded-2xl border border-white/8 bg-white/3 p-10 text-center grid-bg">
-          <h2 className="text-2xl font-bold mb-3">Ready to get ahead?</h2>
-          <p className="text-zinc-400 text-sm mb-6">Start free. No credit card required.</p>
-          <Link
-            href="/register"
-            className="btn-primary inline-flex rounded-xl px-6 py-2.5 text-sm font-semibold"
-          >
-            Create your account →
-          </Link>
-        </div>
-      </section>
+        <section className="mx-auto max-w-5xl px-6 pb-20">
+          <h2 className="text-center text-2xl font-semibold tracking-tight">
+            One agent, four very different asks
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-center text-sm text-text-muted">
+            Who counts as the right person depends entirely on why you&apos;re reaching out. A
+            VP is the target in business development and the wrong door in a job search — Sparrow
+            ranks accordingly.
+          </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            {USE_CASES.map((useCase) => (
+              <div
+                key={useCase.title}
+                className="rounded-xl border border-border-subtle bg-surface p-6"
+              >
+                <h3 className="font-medium">{useCase.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-text-muted">{useCase.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <footer className="border-t border-white/6 py-6 text-center text-xs text-zinc-600">
-        © {new Date().getFullYear()} ApplyNow · apply-now-ai.com
-      </footer>
+        <section className="mx-auto max-w-5xl px-6 pb-24">
+          <div className="rounded-2xl border border-border-subtle bg-surface-sunk px-6 py-12 text-center">
+            <h2 className="text-2xl font-semibold tracking-tight">
+              Pay for what you use, nothing else
+            </h2>
+            <p className="mx-auto mt-3 max-w-md text-sm text-text-muted">
+              Credits, not a subscription. A contact costs one, a drafted message costs two, and
+              nothing runs when your balance hits zero.
+            </p>
+            <Button asChild size="lg" className="mt-6">
+              <Link href="/register">
+                Get started free
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </section>
+      </main>
+
+      <MarketingFooter />
     </div>
   );
 }

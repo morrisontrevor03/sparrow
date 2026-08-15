@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.dependencies import create_access_token, get_current_user, hash_password, verify_password
-from app.models.subscription import Subscription
+from app.models.subscription import BillingAccount
+from app.services import credits
 from app.models.user import User, UserPreferences
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.services.email_service import send_email, verification_email
@@ -142,7 +143,8 @@ async def google_callback(
             db.add(user)
             await db.flush()
             db.add(UserPreferences(user_id=user.id))
-            db.add(Subscription(user_id=user.id, plan="free"))
+            db.add(BillingAccount(user_id=user.id))
+            await credits.grant_signup_credits(db, user.id)
     else:
         # Ensure existing Google users are marked verified
         if not user.is_verified:
@@ -181,13 +183,14 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
     await db.flush()
 
     db.add(UserPreferences(user_id=user.id))
-    db.add(Subscription(user_id=user.id, plan="free"))
+    db.add(BillingAccount(user_id=user.id))
+    await credits.grant_signup_credits(db, user.id)
 
     await db.commit()
     await db.refresh(user)
 
     verify_url = f"{settings.backend_url.rstrip('/')}/api/auth/verify-email?token={token}"
-    await send_email(user.email, "Verify your ApplyNow account", verification_email(verify_url))
+    await send_email(user.email, "Verify your Sparrow account", verification_email(verify_url))
 
     return TokenResponse(access_token=create_access_token(user.id))
 
@@ -226,7 +229,7 @@ async def resend_verification(current_user: User = Depends(get_current_user), db
     await db.commit()
 
     verify_url = f"{settings.backend_url.rstrip('/')}/api/auth/verify-email?token={token}"
-    sent = await send_email(current_user.email, "Verify your ApplyNow account", verification_email(verify_url))
+    sent = await send_email(current_user.email, "Verify your Sparrow account", verification_email(verify_url))
     if not sent:
         raise HTTPException(status_code=503, detail="Failed to send verification email — try again shortly")
 

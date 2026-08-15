@@ -10,13 +10,15 @@ const queryClient = new QueryClient({
 });
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  useEffect(() => { initPostHog(); }, []);
+  useEffect(() => {
+    initPostHog();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         {children}
-        <Toaster theme="dark" position="bottom-right" />
+        <Toaster theme="light" position="bottom-right" richColors />
       </AuthProvider>
     </QueryClientProvider>
   );

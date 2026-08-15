@@ -1,136 +1,212 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* ---------------------------------------------------------------------------
+   Sparrow design tokens — light.
+
+   Two rules, both learned from the previous iteration of this file:
+     1. Every variable declared here is exposed through @theme inline below.
+        The old file declared 13 and exposed 4, which is why the app ended up
+        with 717 hardcoded `bg-white/5`-style classes and two token usages.
+     2. The accent is defined once. The old accent appeared in six places, five
+        of them literal copies, so rebranding it meant a search-and-replace.
+   --------------------------------------------------------------------------- */
 
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
-  --card: #0f0f12;
-  --card-foreground: #fafafa;
-  --border: rgba(255,255,255,0.08);
-  --input: rgba(255,255,255,0.06);
-  --primary: #fafafa;
-  --primary-foreground: #09090b;
-  --secondary: rgba(255,255,255,0.06);
-  --secondary-foreground: #fafafa;
-  --muted: rgba(255,255,255,0.06);
-  --muted-foreground: #a1a1aa;
-  --accent: rgba(255,255,255,0.08);
-  --accent-foreground: #fafafa;
-  --destructive: #ef4444;
-  --signal: oklch(0.85 0.18 145);
-  --signal-soft: oklch(0.85 0.18 145 / 0.15);
-  --radius: 0.75rem;
+  /* Surfaces, back to front */
+  --surface: #ffffff;
+  --surface-sunk: #f7f7f8;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+
+  /* Text, most to least prominent */
+  --text: #18181b;
+  --text-muted: #52525b;
+  --text-subtle: #a1a1aa;
+  --text-inverted: #ffffff;
+
+  /* Lines */
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --ring: oklch(0.62 0.17 150 / 0.35);
+
+  /* Brand accent.
+     The dark theme used oklch(0.85 0.18 145) — at L=0.85 that is a highlighter
+     stripe on white and fails contrast at any text size. Dropped to L=0.62,
+     which holds AA against --surface for normal text. */
+  --accent: oklch(0.62 0.17 150);
+  --accent-hover: oklch(0.56 0.17 150);
+  --accent-soft: oklch(0.62 0.17 150 / 0.1);
+  --accent-contrast: #ffffff;
+
+  /* Status */
+  --success: oklch(0.62 0.17 150);
+  --success-soft: oklch(0.62 0.17 150 / 0.1);
+  --warning: #b45309;
+  --warning-soft: rgba(180, 83, 9, 0.1);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --info: #2563eb;
+  --info-soft: rgba(37, 99, 235, 0.1);
+
+  --radius: 0.625rem;
+
+  /* shadcn/ui compatibility layer — its components read these names. Mapping
+     them onto the tokens above keeps one source of truth instead of two
+     parallel palettes that drift. */
+  --background: var(--surface);
+  --foreground: var(--text);
+  --card: var(--surface-raised);
+  --card-foreground: var(--text);
+  --popover: var(--surface-overlay);
+  --popover-foreground: var(--text);
+  --primary: var(--text);
+  --primary-foreground: var(--text-inverted);
+  --secondary: var(--surface-sunk);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-sunk);
+  --muted-foreground: var(--text-muted);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--text-inverted);
+  --input: var(--border);
 }
 
 @theme inline {
+  --color-surface: var(--surface);
+  --color-surface-sunk: var(--surface-sunk);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-overlay: var(--surface-overlay);
+
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-inverted: var(--text-inverted);
+
+  --color-border-subtle: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-contrast: var(--accent-contrast);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  /* shadcn/ui token names */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-signal: var(--signal);
-  --color-signal-soft: var(--signal-soft);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Native controls follow the light theme instead of rendering dark chrome. */
+  select,
+  input,
+  textarea {
+    color-scheme: light;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
-/* Aurora mesh — scoped to a hero/section. Soft fade-out at bottom prevents
-   any visible edge between the gradient region and the flat page below. */
+/* ---------------------------------------------------------------------------
+   Utilities
+   --------------------------------------------------------------------------- */
+
+/* Soft brand wash behind hero sections. Reads as paper, not neon. */
 .aurora-hero {
   background:
-    radial-gradient(ellipse 70% 90% at 50% -10%, oklch(0.85 0.18 145 / 0.10), transparent 70%),
-    radial-gradient(ellipse 50% 60% at 95% 0%, oklch(0.55 0.15 280 / 0.08), transparent 70%),
-    radial-gradient(ellipse 50% 60% at 5% 30%, oklch(0.5 0.12 200 / 0.06), transparent 70%);
+    radial-gradient(ellipse 70% 90% at 50% -10%, var(--accent-soft), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 95% 0%, rgba(37, 99, 235, 0.05), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 5% 30%, rgba(124, 58, 237, 0.04), transparent 70%);
   mask-image: linear-gradient(to bottom, black 40%, transparent 95%);
   -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 95%);
 }
 
-/* Film-grain overlay — adds analog tactility on top of the gradient mesh */
-.grain::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  opacity: 0.05;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-}
-
-/* Grid background pattern for hero / empty states */
+/* Faint grid for hero and empty states. */
 .grid-bg {
   background-image:
-    linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+    linear-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
-/* Radial fade mask for grid bg */
 .grid-bg-fade {
   mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%);
   -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%);
 }
 
-/* Gradient-border card — feature tiles, hover pulls in signal-green ring */
+/* Feature card that lifts and pulls in the accent on hover. */
 .card-glow {
   position: relative;
-  background:
-    linear-gradient(oklch(0.18 0.005 285), oklch(0.16 0.005 285)) padding-box,
-    linear-gradient(135deg, oklch(0.40 0.03 285 / 0.45), oklch(0.22 0.01 285 / 0.10)) border-box;
-  border: 1px solid transparent;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   border-radius: 1rem;
-  transition: background 240ms ease, transform 240ms ease;
+  transition:
+    border-color 240ms ease,
+    box-shadow 240ms ease,
+    transform 240ms ease;
 }
 .card-glow:hover {
-  background:
-    linear-gradient(oklch(0.20 0.005 285), oklch(0.17 0.005 285)) padding-box,
-    linear-gradient(135deg, oklch(0.85 0.18 145 / 0.55), oklch(0.40 0.05 285 / 0.15)) border-box;
+  border-color: var(--accent);
+  box-shadow: 0 8px 24px -12px var(--accent-soft);
+  transform: translateY(-2px);
 }
 
-/* Glowing primary CTA — layered shadows for premium tactility */
-.btn-primary {
-  background: linear-gradient(180deg, #ffffff, #e4e4e7);
-  color: #09090b;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.65),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.10),
-    0 1px 0 rgba(0, 0, 0, 0.40),
-    0 10px 28px -10px rgba(255, 255, 255, 0.30),
-    0 0 0 1px rgba(255, 255, 255, 0.10);
-  transition: transform 160ms ease, box-shadow 240ms ease;
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
-.btn-primary:hover {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.65),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.10),
-    0 1px 0 rgba(0, 0, 0, 0.40),
-    0 14px 36px -10px oklch(0.85 0.18 145 / 0.35),
-    0 0 0 1px rgba(255, 255, 255, 0.15);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
-
-/* Mono accent — for scores, timestamps, agent tags */
-.tag-mono {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.375rem;
-  background: oklch(0.22 0.005 285);
-  color: oklch(0.7 0.005 285);
-  border: 1px solid oklch(0.30 0.005 285);
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
 }
-
-/* Force native select dropdowns into dark mode */
-select {
-  color-scheme: dark;
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-subtle);
 }
-
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }

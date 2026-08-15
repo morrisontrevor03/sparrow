@@ -3,18 +3,25 @@ import uuid
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
-from sqlalchemy import select, desc, delete
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.contact import Contact
-from app.models.user import User, UserPreferences
+from app.models.user import User
+from app.services import credits, drafting, targeting
 
 router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 
-VALID_OUTREACH_STATUSES = {"discovered", "message_drafted", "sent", "replied", "meeting_scheduled"}
+VALID_OUTREACH_STATUSES = {
+    "discovered",
+    "message_drafted",
+    "sent",
+    "replied",
+    "meeting_scheduled",
+}
 
 
 class ContactUpdate(BaseModel):
@@ -26,12 +33,15 @@ class ContactUpdate(BaseModel):
     @classmethod
     def validate_outreach_status(cls, v: str | None) -> str | None:
         if v is not None and v not in VALID_OUTREACH_STATUSES:
-            raise ValueError(f"outreach_status must be one of: {', '.join(sorted(VALID_OUTREACH_STATUSES))}")
+            raise ValueError(
+                f"outreach_status must be one of: {', '.join(sorted(VALID_OUTREACH_STATUSES))}"
+            )
         return v
 
 
 @router.get("")
 async def list_contacts(
+    campaign_id: uuid.UUID | None = Query(None),
     company: str | None = Query(None),
     status: str | None = Query(None),
     score_min: float = Query(0.0),
@@ -43,6 +53,8 @@ async def list_contacts(
         .where(Contact.user_id == current_user.id)
         .order_by(desc(Contact.relevance_score), desc(Contact.discovered_at))
     )
+    if campaign_id:
+        query = query.where(Contact.campaign_id == campaign_id)
     if company:
         query = query.where(Contact.company.ilike(f"%{company}%"))
     if status:
@@ -51,8 +63,18 @@ async def list_contacts(
         query = query.where(Contact.relevance_score >= score_min)
 
     result = await db.execute(query)
-    contacts = result.scalars().all()
-    return [_serialize(c) for c in contacts]
+    return [_serialize(c) for c in result.scalars().all()]
+
+
+async def _get_owned(db: AsyncSession, contact_id: uuid.UUID, user_id: uuid.UUID) -> Contact:
+    contact = (
+        await db.execute(
+            select(Contact).where(Contact.id == contact_id, Contact.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return contact
 
 
 @router.get("/{contact_id}")
@@ -61,13 +83,7 @@ async def get_contact(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Contact).where(Contact.id == contact_id, Contact.user_id == current_user.id)
-    )
-    c = result.scalar_one_or_none()
-    if not c:
-        raise HTTPException(status_code=404, detail="Contact not found")
-    return _serialize(c)
+    return _serialize(await _get_owned(db, contact_id, current_user.id))
 
 
 @router.patch("/{contact_id}")
@@ -77,19 +93,12 @@ async def update_contact(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Contact).where(Contact.id == contact_id, Contact.user_id == current_user.id)
-    )
-    c = result.scalar_one_or_none()
-    if not c:
-        raise HTTPException(status_code=404, detail="Contact not found")
-
+    contact = await _get_owned(db, contact_id, current_user.id)
     for field, value in body.model_dump(exclude_none=True).items():
-        setattr(c, field, value)
-
+        setattr(contact, field, value)
     await db.commit()
-    await db.refresh(c)
-    return _serialize(c)
+    await db.refresh(contact)
+    return _serialize(contact)
 
 
 @router.post("/{contact_id}/draft-message")
@@ -98,47 +107,62 @@ async def draft_outreach_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Contact).where(Contact.id == contact_id, Contact.user_id == current_user.id)
-    )
-    c = result.scalar_one_or_none()
-    if not c:
-        raise HTTPException(status_code=404, detail="Contact not found")
+    contact = await _get_owned(db, contact_id, current_user.id)
 
-    prefs_result = await db.execute(
-        select(UserPreferences).where(UserPreferences.user_id == current_user.id)
+    if not await credits.has_credits(db, current_user.id, settings.credits_per_draft):
+        raise HTTPException(
+            status_code=402,
+            detail=f"Out of credits — drafting a message costs {settings.credits_per_draft}",
+        )
+
+    campaign = await drafting.load_campaign_for_contact(db, contact, current_user.id)
+    profile = targeting.get_profile(campaign.campaign_type if campaign else None)
+    objective = (
+        (campaign.objective or campaign.name)
+        if campaign
+        else "Start a genuine professional conversation with this person."
     )
-    prefs = prefs_result.scalar_one_or_none()
+
+    sender = await drafting.build_sender_context(db, current_user)
+    prompt = drafting.build_draft_prompt(sender, contact, profile, objective)
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    prompt = (
-        f"Write a warm, concise LinkedIn cold outreach message (2-3 sentences) from a "
-        f"{getattr(prefs, 'experience_level', 'entry') or 'entry'}-level job seeker "
-        f"targeting {', '.join(getattr(prefs, 'target_roles', ['software engineering']) or ['software engineering'])} roles "
-        f"to {c.first_name} {c.last_name or ''}, who is a {c.title} at {c.company}.\n\n"
-        f"Rules: reference the company or team (not their title), ask to learn about the team or culture, "
-        f"never ask for a job or referral directly. Return only the message text, no subject line."
-    )
-
     resp = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-sonnet-5",
         max_tokens=300,
         messages=[{"role": "user", "content": prompt}],
     )
-    message = resp.content[0].text.strip()
+    message = next((b.text for b in resp.content if b.type == "text"), "").strip()
+    if not message:
+        raise HTTPException(status_code=502, detail="Draft generation returned no text")
 
-    c.outreach_message = message
+    contact.outreach_message = message
+    if contact.outreach_status == "discovered":
+        contact.outreach_status = "message_drafted"
+
+    # Charge only after a usable draft exists.
+    await credits.spend(
+        db,
+        current_user.id,
+        settings.credits_per_draft,
+        "outreach_draft",
+        campaign_id=contact.campaign_id,
+    )
     await db.commit()
-    await db.refresh(c)
-    return _serialize(c)
+    await db.refresh(contact)
+    return _serialize(contact)
 
 
 @router.delete("", status_code=204)
 async def delete_all_contacts(
+    campaign_id: uuid.UUID | None = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await db.execute(delete(Contact).where(Contact.user_id == current_user.id))
+    stmt = delete(Contact).where(Contact.user_id == current_user.id)
+    if campaign_id:
+        stmt = stmt.where(Contact.campaign_id == campaign_id)
+    await db.execute(stmt)
     await db.commit()
 
 
@@ -148,19 +172,15 @@ async def delete_contact(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Contact).where(Contact.id == contact_id, Contact.user_id == current_user.id)
-    )
-    c = result.scalar_one_or_none()
-    if not c:
-        raise HTTPException(status_code=404, detail="Contact not found")
-    await db.delete(c)
+    contact = await _get_owned(db, contact_id, current_user.id)
+    await db.delete(contact)
     await db.commit()
 
 
 def _serialize(c: Contact) -> dict:
     return {
         "id": str(c.id),
+        "campaign_id": str(c.campaign_id) if c.campaign_id else None,
         "company": c.company,
         "first_name": c.first_name,
         "last_name": c.last_name,

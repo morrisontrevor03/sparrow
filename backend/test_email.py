@@ -1,35 +1,70 @@
-"""Run with: RESEND_API_KEY=re_xxx python test_email.py"""
+"""
+Manual Resend smoke test — sends one of each template to a recipient.
+
+    python test_email.py you@example.com
+"""
+
 import asyncio
-import os
 import sys
 
-sys.path.insert(0, ".")
-os.environ.setdefault("RESEND_API_KEY", os.environ.get("RESEND_API_KEY", ""))
+from app.config import settings
+from app.services.email_service import (
+    low_balance_email,
+    new_contacts_email,
+    send_email,
+    verification_email,
+    weekly_summary_email,
+)
 
-from app.services.email_service import send_email, verification_email, new_jobs_digest_email, weekly_summary_email
-
-TO = "tdmorrison03@gmail.com"
-FRONTEND_URL = "http://localhost:3000"
-
-
-async def main():
-    print("Sending verification email...")
-    ok = await send_email(TO, "Verify your ApplyNow account", verification_email(f"{FRONTEND_URL}/login?verified=true"))
-    print("  ✓ sent" if ok else "  ✗ failed")
-
-    print("Sending job digest email...")
-    jobs = [
-        {"id": "abc123", "title": "Senior Software Engineer", "company": "Stripe", "location": "Remote", "url": "https://stripe.com/jobs", "match_score": 0.92, "match_reasoning": "Strong TypeScript and distributed systems background."},
-        {"id": "def456", "title": "Backend Engineer", "company": "Linear", "location": "San Francisco, CA", "url": "https://linear.app/jobs", "match_score": 0.78, "match_reasoning": "Matches target role and company size preference."},
-    ]
-    ok = await send_email(TO, "2 new jobs found — apply early", new_jobs_digest_email(jobs, FRONTEND_URL))
-    print("  ✓ sent" if ok else "  ✗ failed")
-
-    print("Sending weekly summary email...")
-    ok = await send_email(TO, "Your ApplyNow weekly summary", weekly_summary_email(
-        name="Tyler", jobs_found=8, contacts_found=5, applications_created=3, agent_runs=12, frontend_url=FRONTEND_URL
-    ))
-    print("  ✓ sent" if ok else "  ✗ failed")
+FRONTEND_URL = settings.frontend_url
 
 
-asyncio.run(main())
+async def main() -> None:
+    if len(sys.argv) < 2:
+        print("usage: python test_email.py you@example.com")
+        raise SystemExit(1)
+    to = sys.argv[1]
+
+    results = {
+        "verification": await send_email(
+            to,
+            "Verify your Sparrow account",
+            verification_email(f"{FRONTEND_URL}/login?verified=true"),
+        ),
+        "new_contacts": await send_email(
+            to,
+            "3 new contacts",
+            new_contacts_email(
+                "Series B fintech — platform teams",
+                [
+                    {"name": "Priya Raghavan", "title": "VP of Engineering", "company": "Ramp"},
+                    {"name": "Marcus Webb", "title": "Head of Platform", "company": "Mercury"},
+                    {"name": "Dani Okonjo", "title": "Director of Data", "company": "Brex"},
+                ],
+                FRONTEND_URL,
+            ),
+        ),
+        "low_balance": await send_email(
+            to, "Your Sparrow credits are running low", low_balance_email(32, FRONTEND_URL)
+        ),
+        "weekly_summary": await send_email(
+            to,
+            "Your Sparrow week",
+            weekly_summary_email(
+                name="Jordan Blake",
+                contacts_found=14,
+                drafts_written=11,
+                credits_spent=36,
+                balance=465,
+                agent_runs=3,
+                frontend_url=FRONTEND_URL,
+            ),
+        ),
+    }
+
+    for name, ok in results.items():
+        print(f"{'OK  ' if ok else 'FAIL'} {name}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sparrow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: sparrow
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sparrow"]
+      interval: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sparrow:${POSTGRES_PASSWORD}@postgres:5432/sparrow
+    volumes:
+      - uploads:/app/uploads
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${BACKEND_URL}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      APP_DOMAIN: ${APP_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:
