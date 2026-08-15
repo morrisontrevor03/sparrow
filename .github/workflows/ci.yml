@@ -11,6 +11,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'docker-compose.prod.yml'
+            frontend:
+              - 'frontend/**'
+              - 'docker-compose.prod.yml'
+              - 'Caddyfile'
+
   frontend-lint:
     name: Frontend â€” lint & type-check
     runs-on: ubuntu-latest
@@ -139,6 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       [
+        changes,
         frontend-lint,
         frontend-build,
         backend-lint,
@@ -152,8 +173,14 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: BACKEND_CHANGED,FRONTEND_CHANGED
           script: |
             cd ${{ secrets.EC2_APP_DIR }}
             git pull --ff-only
-            docker compose -f docker-compose.prod.yml up -d --build
+            [ "$BACKEND_CHANGED" = "true" ] && docker compose -f docker-compose.prod.yml build backend
+            [ "$FRONTEND_CHANGED" = "true" ] && docker compose -f docker-compose.prod.yml build frontend
+            docker compose -f docker-compose.prod.yml up -d
             docker image prune -f
+        env:
+          BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
+          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
