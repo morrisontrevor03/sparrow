@@ -22,14 +22,22 @@ const AuthContext = createContext<AuthContextValue>({
   logout: () => {},
 });
 
+function storedToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Seed from the token's presence rather than defaulting to true and
+  // immediately setting false in an effect — a token-less visitor is not
+  // "loading", and the effect-then-setState version triggers a cascading render.
+  const [loading, setLoading] = useState(() => storedToken() !== null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) { setLoading(false); return; }
-    auth.me()
+    if (storedToken() === null) return;
+    auth
+      .me()
       .then(setUser)
       .catch(() => localStorage.removeItem("token"))
       .finally(() => setLoading(false));
@@ -37,14 +45,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (token: string) => {
     localStorage.setItem("token", token);
-    const u = await auth.me();
-    setUser(u);
+    setUser(await auth.me());
   };
 
   const logout = () => {
     localStorage.removeItem("token");
     setUser(null);
-    window.location.href = "/login";
+    window.location.assign("/login");
   };
 
   return (

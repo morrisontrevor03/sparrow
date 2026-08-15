@@ -24,4 +24,3 @@ class Resume(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship("User", back_populates="resumes")
-    applications: Mapped[list["Application"]] = relationship("Application", back_populates="resume")

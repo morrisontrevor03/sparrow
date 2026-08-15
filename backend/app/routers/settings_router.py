@@ -29,49 +29,27 @@ def _enforce_autocomplete_rate_limit(user_id: uuid.UUID) -> None:
     cutoff = now - _AUTOCOMPLETE_RATE_WINDOW
     attempts = [t for t in _autocomplete_rate_store[key] if t > cutoff]
     if len(attempts) >= _AUTOCOMPLETE_RATE_MAX:
-        raise HTTPException(status_code=429, detail="Rate limit reached — maximum 5 autocomplete requests per hour")
+        raise HTTPException(
+            status_code=429, detail="Rate limit reached — maximum 5 autocomplete requests per hour"
+        )
     attempts.append(now)
     _autocomplete_rate_store[key] = attempts
 
 
 class PreferencesUpdate(BaseModel):
-    target_roles: list[str] | None = None
-    target_companies: list[str] | None = None
-    target_locations: list[str] | None = None
-    excluded_companies: list[str] | None = None
-    min_salary: int | None = None
-    max_salary: int | None = None
-    employment_types: list[str] | None = None
-    experience_level: str | None = None
-    salary_type: str | None = None
-    location_flexible: bool | None = None
-    work_environment: list[str] | None = None
-    open_to_similar_companies: bool | None = None
-    company_stages: list[str] | None = None
-    company_industries: list[str] | None = None
-    scout_enabled: bool | None = None
-    networking_enabled: bool | None = None
-    application_agent_enabled: bool | None = None
+    headline: str | None = None
+    value_prop: str | None = None
+    timezone: str | None = None
+    email_digest_enabled: bool | None = None
+    email_low_balance_enabled: bool | None = None
 
 
 class PreferencesResponse(BaseModel):
-    target_roles: list[str]
-    target_companies: list[str]
-    target_locations: list[str]
-    excluded_companies: list[str]
-    min_salary: int | None
-    max_salary: int | None
-    employment_types: list[str]
-    experience_level: str | None
-    salary_type: str | None
-    location_flexible: bool
-    work_environment: list[str]
-    open_to_similar_companies: bool
-    company_stages: list[str]
-    company_industries: list[str]
-    scout_enabled: bool
-    networking_enabled: bool
-    application_agent_enabled: bool
+    headline: str | None
+    value_prop: str | None
+    timezone: str | None
+    email_digest_enabled: bool
+    email_low_balance_enabled: bool
 
     model_config = {"from_attributes": True}
 
@@ -81,10 +59,17 @@ async def get_settings(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(UserPreferences).where(UserPreferences.user_id == current_user.id))
-    prefs = result.scalar_one_or_none()
+    prefs = (
+        await db.execute(
+            select(UserPreferences).where(UserPreferences.user_id == current_user.id)
+        )
+    ).scalar_one_or_none()
     if not prefs:
-        raise HTTPException(status_code=404, detail="Preferences not found")
+        # A missing row is a normal state for a brand-new account, not an error.
+        prefs = UserPreferences(user_id=current_user.id)
+        db.add(prefs)
+        await db.commit()
+        await db.refresh(prefs)
     return prefs
 
 
@@ -94,8 +79,11 @@ async def update_settings(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(UserPreferences).where(UserPreferences.user_id == current_user.id))
-    prefs = result.scalar_one_or_none()
+    prefs = (
+        await db.execute(
+            select(UserPreferences).where(UserPreferences.user_id == current_user.id)
+        )
+    ).scalar_one_or_none()
     if not prefs:
         prefs = UserPreferences(user_id=current_user.id)
         db.add(prefs)
@@ -117,9 +105,12 @@ async def autocomplete_companies(
     body: AutocompleteRequest,
     current_user: User = Depends(get_current_user),
 ):
+    """Expand a seed list of target companies into similar ones for a campaign."""
     _enforce_autocomplete_rate_limit(current_user.id)
     if len(body.seed_companies) < 5:
-        raise HTTPException(status_code=400, detail="Add at least 5 companies before using Autocomplete")
+        raise HTTPException(
+            status_code=400, detail="Add at least 5 companies before using Autocomplete"
+        )
 
     max_suggestions = 25 - len(body.seed_companies)
     if max_suggestions <= 0:
@@ -127,20 +118,20 @@ async def autocomplete_companies(
 
     seeds_str = ", ".join(body.seed_companies[:20])
     prompt = (
-        f"List exactly {max_suggestions} real, currently-active technology companies "
+        f"List exactly {max_suggestions} real, currently-active companies "
         f"that are similar in size, stage, and industry to these companies: {seeds_str}.\n\n"
         "Rules:\n"
         "- Do NOT include any of the seed companies or obvious variants of them.\n"
         "- One company name per line, no numbering, no extra text.\n"
         "- Official trading name only (e.g. 'Stripe' not 'Stripe Inc.').\n"
-        "- Only include actual operating technology businesses — not investment data platforms "
+        "- Only include actual operating businesses — not investment data platforms "
         "(PitchBook, Crunchbase, AngelList, Carta, CB Insights, Dealroom, Preqin, etc.).\n"
         f"If fewer than {max_suggestions} companies match, return as many as you can."
     )
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     resp = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-haiku-4-5",
         max_tokens=400,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -149,11 +140,8 @@ async def autocomplete_companies(
     seed_lower = {clean_company_name(c).lower() for c in body.seed_companies}
     suggestions: list[str] = []
     for line in raw.splitlines():
-        name = line.strip()
-        if not name:
-            continue
-        name = re.sub(r"^[\d]+[.)]\s*", "", name)
-        name = re.sub(r"^[-•]\s*", "", name)
+        name = re.sub(r"^[\d]+[.)]\s*", "", line.strip())
+        name = re.sub(r"^[-•]\s*", "", name).strip()
         if not name:
             continue
         if any(kw in name.lower() for kw in FUNDING_DB_KEYWORDS):

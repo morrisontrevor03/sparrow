@@ -1,19 +1,23 @@
 from app.models.user import User, UserPreferences
 from app.models.resume import Resume
-from app.models.job import Job
-from app.models.application import Application
+from app.models.campaign import Campaign
 from app.models.contact import Contact
 from app.models.agent_run import AgentRun
-from app.models.subscription import Subscription, MonthlyUsage
+from app.models.credits import CreditLedgerEntry, CreditPurchase
+from app.models.subscription import BillingAccount
+from app.models.oauth import OAuthAuthorizationCode, OAuthClient, OAuthToken
 
 __all__ = [
     "User",
     "UserPreferences",
     "Resume",
-    "Job",
-    "Application",
+    "Campaign",
     "Contact",
     "AgentRun",
-    "Subscription",
-    "MonthlyUsage",
+    "CreditLedgerEntry",
+    "CreditPurchase",
+    "BillingAccount",
+    "OAuthClient",
+    "OAuthAuthorizationCode",
+    "OAuthToken",
 ]

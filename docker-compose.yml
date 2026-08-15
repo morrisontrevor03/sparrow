@@ -4,15 +4,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: applynow
-      POSTGRES_PASSWORD: applynow
-      POSTGRES_DB: applynow
+      POSTGRES_USER: sparrow
+      POSTGRES_PASSWORD: sparrow
+      POSTGRES_DB: sparrow
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U applynow"]
+      test: ["CMD-SHELL", "pg_isready -U sparrow"]
       interval: 5s
       retries: 5
 
@@ -20,7 +20,7 @@ services:
     build: ./backend
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://applynow:applynow@postgres:5432/applynow
+      DATABASE_URL: postgresql+asyncpg://sparrow:sparrow@postgres:5432/sparrow
     ports:
       - "8000:8000"
     volumes:
