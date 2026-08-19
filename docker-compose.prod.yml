@@ -29,20 +29,41 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    # Direct host port until a domain exists — remove once Caddy (below) is
+    # fronting this with TLS, so the API is only reachable through Caddy.
+    ports:
+      - "8000:8000"
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${BACKEND_URL}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    # Same as backend: temporary direct access until Caddy takes over.
+    ports:
+      - "3000:3000"
+
+  # Not started by default (needs a real domain for Let's Encrypt to issue
+  # certs against). Bring up with: docker compose --profile domain up -d
   caddy:
     image: caddy:2-alpine
+    profiles: ["domain"]
     ports:
       - "80:80"
       - "443:443"
     environment:
       API_DOMAIN: ${API_DOMAIN}
+      APP_DOMAIN: ${APP_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
       - backend
+      - frontend
     restart: unless-stopped
 
 volumes:
