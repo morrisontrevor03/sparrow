@@ -6,12 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.routing import Mount
 
+from app.analytics import init_posthog, shutdown_posthog
 from app.config import CREDIT_PACKS, pack_price_id, settings
-from app.database import engine
-from app.database import Base
+from app.database import Base, engine
 from app.mcp_server import mcp as mcp_server
 from app.scheduler.jobs import register_jobs, scheduler
-from app.analytics import init_posthog, shutdown_posthog
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -424,8 +424,8 @@ async def update_contact_status(
 async def _load_campaign(db, campaign_id: str, user_id: uuid.UUID) -> Campaign:
     try:
         parsed = uuid.UUID(campaign_id)
-    except ValueError:
-        raise ToolError(f"Not a valid campaign id: {campaign_id}")
+    except ValueError as exc:
+        raise ToolError(f"Not a valid campaign id: {campaign_id}") from exc
 
     campaign = (
         await db.execute(
