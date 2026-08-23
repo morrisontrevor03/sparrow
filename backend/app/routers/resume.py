@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,11 +43,11 @@ async def upload_resume(
     try:
         raw_text, structured_data = await parse_resume(file_bytes, file_type)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Could not parse resume: {exc}")
+        raise HTTPException(status_code=422, detail=f"Could not parse resume: {exc}") from exc
 
     # Deactivate old resumes
     result = await db.execute(
-        select(Resume).where(Resume.user_id == current_user.id, Resume.is_active == True)
+        select(Resume).where(Resume.user_id == current_user.id, Resume.is_active)
     )
     for old in result.scalars().all():
         old.is_active = False
@@ -107,7 +107,7 @@ async def get_active_resume(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Resume).where(Resume.user_id == current_user.id, Resume.is_active == True)
+        select(Resume).where(Resume.user_id == current_user.id, Resume.is_active)
     )
     resume = result.scalar_one_or_none()
     if not resume:

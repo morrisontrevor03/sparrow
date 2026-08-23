@@ -11,11 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import create_access_token, get_current_user, hash_password, verify_password
+from app.dependencies import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    verify_password,
+)
 from app.models.subscription import BillingAccount
-from app.services import credits
 from app.models.user import User, UserPreferences
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.services import credits
 from app.services.email_service import send_email, verification_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])

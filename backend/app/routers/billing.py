@@ -164,7 +164,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         )
     except Exception as exc:
         logger.warning("Stripe webhook signature verification failed: %s", exc)
-        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+        raise HTTPException(status_code=400, detail="Invalid webhook signature") from exc
 
     if event["type"] != "checkout.session.completed":
         return {"received": True}
