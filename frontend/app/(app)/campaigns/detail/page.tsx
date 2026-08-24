@@ -1,6 +1,7 @@
 "use client";
-import { use, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Play, Zap } from "lucide-react";
@@ -15,8 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ContactTable } from "@/components/contacts/ContactTable";
 import { campaigns } from "@/lib/api";
 
-export default function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+function CampaignDetail({ id }: { id: string }) {
   const qc = useQueryClient();
   const [running, setRunning] = useState(false);
 
@@ -228,5 +228,18 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function CampaignDetailFromQuery() {
+  const searchParams = useSearchParams();
+  return <CampaignDetail id={searchParams.get("id") ?? ""} />;
+}
+
+export default function CampaignDetailPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64" />}>
+      <CampaignDetailFromQuery />
+    </Suspense>
   );
 }
