@@ -48,7 +48,7 @@ export default function OnboardingPage() {
     onSuccess: (campaign) => {
       track("onboarding_completed", { campaign_type: campaignType });
       toast.success("You're set up");
-      router.replace(`/campaigns/${campaign.id}`);
+      router.replace(`/campaigns/detail?id=${campaign.id}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });

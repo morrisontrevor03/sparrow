@@ -51,7 +51,7 @@ export default function NewCampaignPage() {
     onSuccess: (campaign) => {
       qc.invalidateQueries({ queryKey: ["campaigns"] });
       toast.success("Campaign created");
-      router.push(`/campaigns/${campaign.id}`);
+      router.push(`/campaigns/detail?id=${campaign.id}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });

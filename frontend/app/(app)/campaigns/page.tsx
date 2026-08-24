@@ -24,7 +24,7 @@ const STATUS_VARIANT: Record<Campaign["status"], "default" | "secondary" | "outl
 
 function CampaignRow({ campaign }: { campaign: Campaign }) {
   return (
-    <Link href={`/campaigns/${campaign.id}`} className="block">
+    <Link href={`/campaigns/detail?id=${campaign.id}`} className="block">
       <Card className="transition-colors hover:border-border-strong">
         <CardContent className="flex items-center justify-between gap-4 py-4">
           <div className="min-w-0 space-y-1">
