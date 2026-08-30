@@ -19,7 +19,7 @@ apscheduler==3.10.4
 httpx==0.28.1
 resend==2.4.0
 stripe==10.12.0
-openai==1.51.0
+openai==1.60.0
 python-dateutil==2.9.0
 # Pinned, not >=: posthog 6 renamed the client's `api_key` argument to
 # `project_api_key`, and the unpinned range let that crash app startup.
