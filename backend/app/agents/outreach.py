@@ -331,7 +331,10 @@ class OutreachAgent(BaseAgent):
             rest = parts[1].split(" | LinkedIn")[0].strip()
 
         if not rest:
-            logger.info("Skipping %r — could not parse name/title from page title", page_title)
+            logger.info(
+                "Skipping — could not parse name/title. raw title=%r, raw result=%r",
+                page_title, result,
+            )
             return None
 
         current_company = _extract_current_company(rest)
