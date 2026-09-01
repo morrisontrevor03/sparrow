@@ -156,16 +156,24 @@ class OutreachAgent(BaseAgent):
             return [company]
 
         manual = list(campaign.target_companies or [])
+        excluded = {clean_company_name(c).lower() for c in (campaign.excluded_companies or [])}
+        manual_filtered = [c for c in manual if clean_company_name(c).lower() not in excluded]
+
+        # An explicit company list is a hard boundary unless the user opted in to
+        # discovery — expanding past it without asking spends Exa/LLM credits on
+        # companies they didn't name.
+        if manual and not campaign.discover_beyond_list:
+            return manual_filtered
+
         await self._update_progress("Discovering additional companies")
         discovered = await self._discover_companies(campaign)
 
         manual_lower = {clean_company_name(c).lower() for c in manual}
-        excluded = {clean_company_name(c).lower() for c in (campaign.excluded_companies or [])}
         unique = [
             c for c in discovered
             if c.lower() not in manual_lower and clean_company_name(c).lower() not in excluded
         ]
-        return [c for c in manual if clean_company_name(c).lower() not in excluded] + unique
+        return manual_filtered + unique
 
     async def _discover_companies(self, campaign: Campaign) -> list[str]:
         stages = campaign.company_stages or []

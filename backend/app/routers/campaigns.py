@@ -50,6 +50,7 @@ class CampaignCreate(BaseModel):
     target_locations: list[str] = []
     excluded_companies: list[str] = []
     company_stages: list[str] = []
+    discover_beyond_list: bool = False
     status: str = "draft"
     autopilot_enabled: bool = False
     autopilot_cadence_days: int = Field(default=3, ge=1, le=30)
@@ -66,6 +67,7 @@ class CampaignUpdate(BaseModel):
     target_locations: list[str] | None = None
     excluded_companies: list[str] | None = None
     company_stages: list[str] | None = None
+    discover_beyond_list: bool | None = None
     status: str | None = None
     autopilot_enabled: bool | None = None
     autopilot_cadence_days: int | None = Field(default=None, ge=1, le=30)
@@ -101,6 +103,7 @@ def _serialize(campaign: Campaign, contact_count: int = 0, spent_this_week: int 
         "target_locations": campaign.target_locations or [],
         "excluded_companies": campaign.excluded_companies or [],
         "company_stages": campaign.company_stages or [],
+        "discover_beyond_list": campaign.discover_beyond_list,
         "status": campaign.status,
         "autopilot_enabled": campaign.autopilot_enabled,
         "autopilot_cadence_days": campaign.autopilot_cadence_days,

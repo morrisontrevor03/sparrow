@@ -41,6 +41,10 @@ class Campaign(Base):
     target_locations: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
     excluded_companies: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
     company_stages: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    # When target_companies is non-empty, the agent searches only that list unless
+    # this is set — discovering companies beyond an explicit list burns Exa/LLM
+    # credits the user didn't ask to spend.
+    discover_beyond_list: Mapped[bool] = mapped_column(Boolean, default=False)
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
 
