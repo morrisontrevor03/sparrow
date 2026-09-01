@@ -207,6 +207,7 @@ export interface Campaign {
   target_locations: string[];
   excluded_companies: string[];
   company_stages: string[];
+  discover_beyond_list: boolean;
   status: "draft" | "active" | "paused";
   autopilot_enabled: boolean;
   autopilot_cadence_days: number;

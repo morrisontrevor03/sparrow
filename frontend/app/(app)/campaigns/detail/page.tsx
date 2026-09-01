@@ -136,6 +136,20 @@ function CampaignDetail({ id }: { id: string }) {
                   </span>
                 </div>
               ))}
+              {campaign.target_companies.length > 0 && (
+                <div className="flex items-center justify-between gap-4 border-t border-border-subtle pt-4">
+                  <div>
+                    <span className="text-text-muted">Discover beyond this list</span>
+                    <p className="mt-1 text-xs text-text-subtle">
+                      When off, Sparrow only searches the companies listed above.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={campaign.discover_beyond_list}
+                    onCheckedChange={(checked) => update.mutate({ discover_beyond_list: checked })}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

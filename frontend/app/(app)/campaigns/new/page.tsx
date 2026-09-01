@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/campaigns/TagInput";
 import { campaigns, type CampaignTypeKey } from "@/lib/api";
@@ -35,6 +36,7 @@ export default function NewCampaignPage() {
   const [targetCompanies, setTargetCompanies] = useState<string[]>([]);
   const [targetIndustries, setTargetIndustries] = useState<string[]>([]);
   const [targetLocations, setTargetLocations] = useState<string[]>([]);
+  const [discoverBeyondList, setDiscoverBeyondList] = useState(false);
 
   const create = useMutation({
     mutationFn: () =>
@@ -46,6 +48,7 @@ export default function NewCampaignPage() {
         target_companies: targetCompanies,
         target_industries: targetIndustries,
         target_locations: targetLocations,
+        discover_beyond_list: discoverBeyondList,
         status: "active",
       }),
     onSuccess: (campaign) => {
@@ -148,6 +151,17 @@ export default function NewCampaignPage() {
             values={targetCompanies}
             onChange={setTargetCompanies}
           />
+          {targetCompanies.length > 0 && (
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle p-3">
+              <div>
+                <Label>Also discover companies beyond this list</Label>
+                <p className="mt-1 text-xs text-text-muted">
+                  Off by default — Sparrow will only search the companies you named above.
+                </p>
+              </div>
+              <Switch checked={discoverBeyondList} onCheckedChange={setDiscoverBeyondList} />
+            </div>
+          )}
           <TagInput
             label="Industries"
             hint="Used to discover companies you didn't name."
