@@ -291,24 +291,30 @@ class OutreachAgent(BaseAgent):
             logger.warning("Exa search error for '%s': %s", company, exc)
             return []
 
+        raw_results = data.get("results") or []
         people = []
-        for result in data.get("results") or []:
+        for result in raw_results:
             person = self._parse_person(result, company)
             if person:
                 people.append(person)
                 self._seen_urls.add(person["linkedin_url"])
 
-        logger.info("Exa '%s' -> %d profiles", company, len(people))
+        logger.info(
+            "Exa '%s' -> %d raw results, %d parsed profiles (query=%r)",
+            company, len(raw_results), len(people), query,
+        )
         await asyncio.sleep(0.3)
         return people
 
     def _parse_person(self, result: dict, company: str) -> dict | None:
         url = result.get("url", "")
-        if "linkedin.com/in/" not in url or url in self._seen_urls:
+        if "linkedin.com/in/" not in url:
+            logger.info("Skipping result — not a linkedin.com/in/ url: %r", url)
             return None
         if url.startswith("http://"):
             url = url.replace("http://", "https://", 1)
         if url in self._seen_urls:
+            logger.info("Skipping %s — already seen this run", url)
             return None
 
         # Exa LinkedIn titles:  "Name | Title @ Company"  or  "Name | Title at Company"
@@ -325,14 +331,15 @@ class OutreachAgent(BaseAgent):
             rest = parts[1].split(" | LinkedIn")[0].strip()
 
         if not rest:
+            logger.info("Skipping %r — could not parse name/title from page title", page_title)
             return None
 
         current_company = _extract_current_company(rest)
         if not current_company:
-            logger.debug("Skipping %s — could not confirm current employer", name)
+            logger.info("Skipping %s — could not confirm current employer from %r", name, rest)
             return None
         if not companies_match(company, current_company):
-            logger.debug(
+            logger.info(
                 "Skipping %s — employer '%s' does not match '%s'", name, current_company, company
             )
             return None
@@ -347,6 +354,7 @@ class OutreachAgent(BaseAgent):
 
         score, reason = targeting.score_title(job_title, self._profile)
         if score <= 0.0:
+            logger.info("Skipping %s — title %r scored %s (%s)", name, job_title, score, reason)
             return None
 
         name_parts = name.split()
