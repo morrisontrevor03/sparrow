@@ -317,10 +317,68 @@ class OutreachAgent(BaseAgent):
             logger.info("Skipping %s — already seen this run", url)
             return None
 
-        # Exa LinkedIn titles:  "Name | Title @ Company"  or  "Name | Title at Company"
-        # Older indexed format: "Name - Title at Company | LinkedIn"
+        parsed = self._parse_person_entity(result) or self._parse_person_title(result)
+        if not parsed:
+            logger.info(
+                "Skipping — could not extract name/title/company. raw result=%r", result
+            )
+            return None
+        first_name, last_name, job_title, current_company = parsed
+
+        if not companies_match(company, current_company):
+            logger.info(
+                "Skipping %s %s — employer '%s' does not match '%s'",
+                first_name, last_name, current_company, company,
+            )
+            return None
+
+        score, reason = targeting.score_title(job_title, self._profile)
+        if score <= 0.0:
+            logger.info(
+                "Skipping %s %s — title %r scored %s (%s)",
+                first_name, last_name, job_title, score, reason,
+            )
+            return None
+
+        return {
+            "first_name": first_name,
+            "last_name": last_name,
+            "title": job_title,
+            "company": company,
+            "linkedin_url": url,
+            "relevance_score": score,
+            "relevance_reasoning": reason,
+        }
+
+    @staticmethod
+    def _parse_person_entity(result: dict) -> tuple[str, str, str, str] | None:
+        """Exa's `category: "people"` results carry a structured `entities` list
+        with a `workHistory` — this is the current response shape, not the
+        scraped-page `title` string `_parse_person_title` below handles."""
+        entities = result.get("entities") or []
+        person = next((e for e in entities if e.get("type") == "person"), None)
+        if not person:
+            return None
+        props = person.get("properties") or {}
+        work_history = props.get("workHistory") or []
+        current_job = next(
+            (j for j in work_history if not (j.get("dates") or {}).get("to")), None
+        ) or (work_history[0] if work_history else None)
+        if not current_job:
+            return None
+
+        current_company = (current_job.get("company") or {}).get("name", "")
+        job_title = current_job.get("title", "")
+        if not current_company or not job_title:
+            return None
+        return props.get("firstName", ""), props.get("lastName", ""), job_title, current_company
+
+    @staticmethod
+    def _parse_person_title(result: dict) -> tuple[str, str, str, str] | None:
+        """Fallback for the older scraped-page title format:
+        "Name | Title @ Company" or "Name - Title at Company | LinkedIn"."""
         page_title = result.get("title", "")
-        name, job_title, rest = "", "", ""
+        name, rest = "", ""
 
         if " | " in page_title and not page_title.endswith("| LinkedIn"):
             name, _, rest = page_title.partition(" | ")
@@ -331,20 +389,10 @@ class OutreachAgent(BaseAgent):
             rest = parts[1].split(" | LinkedIn")[0].strip()
 
         if not rest:
-            logger.info(
-                "Skipping — could not parse name/title. raw title=%r, raw result=%r",
-                page_title, result,
-            )
             return None
 
         current_company = _extract_current_company(rest)
         if not current_company:
-            logger.info("Skipping %s — could not confirm current employer from %r", name, rest)
-            return None
-        if not companies_match(company, current_company):
-            logger.info(
-                "Skipping %s — employer '%s' does not match '%s'", name, current_company, company
-            )
             return None
 
         for marker in (f" at {current_company}", f" @ {current_company}", f"@{current_company}"):
@@ -355,21 +403,10 @@ class OutreachAgent(BaseAgent):
         else:
             job_title = rest.strip()
 
-        score, reason = targeting.score_title(job_title, self._profile)
-        if score <= 0.0:
-            logger.info("Skipping %s — title %r scored %s (%s)", name, job_title, score, reason)
-            return None
-
         name_parts = name.split()
-        return {
-            "first_name": name_parts[0] if name_parts else "",
-            "last_name": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
-            "title": job_title,
-            "company": company,
-            "linkedin_url": url,
-            "relevance_score": score,
-            "relevance_reasoning": reason,
-        }
+        first_name = name_parts[0] if name_parts else ""
+        last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+        return first_name, last_name, job_title, current_company
 
     async def _save_contacts(self, found: list[dict]) -> tuple[int, list[Contact]]:
         # Best matches first, so a balance that runs out mid-run spends what's
